@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -95,7 +96,53 @@ func smartDisplayLine(content string) {
 	lastDisplayLength = currentLength
 }
 
+func showHelp() {
+	fmt.Println("gotestshow - A real-time formatter for `go test -json` output")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  go test -json ./... | gotestshow")
+	fmt.Println()
+	fmt.Println("Description:")
+	fmt.Println("  gotestshow reads JSON-formatted test output from stdin and displays")
+	fmt.Println("  it in a human-readable format with real-time progress updates.")
+	fmt.Println()
+	fmt.Println("Features:")
+	fmt.Println("  • Real-time progress with animated spinner")
+	fmt.Println("  • Shows only failed test details to reduce noise")
+	fmt.Println("  • Smart handling of subtests and parallel tests")
+	fmt.Println("  • Package-level failure detection (build errors, syntax errors)")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  # Test all packages")
+	fmt.Println("  go test -json ./... | gotestshow")
+	fmt.Println()
+	fmt.Println("  # Test specific package")
+	fmt.Println("  go test -json ./pkg/... | gotestshow")
+	fmt.Println()
+	fmt.Println("  # Run specific test")
+	fmt.Println("  go test -json -run TestName ./... | gotestshow")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  -help  Show this help message")
+}
+
 func main() {
+	help := flag.Bool("help", false, "Show help message")
+	flag.Parse()
+
+	if *help {
+		showHelp()
+		os.Exit(0)
+	}
+
+	// Check if stdin has input
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		// No input from pipe
+		showHelp()
+		os.Exit(0)
+	}
+
 	results := make(map[string]*TestResult)
 	packages := make(map[string]*PackageState)
 	var mu sync.RWMutex
