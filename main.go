@@ -67,8 +67,10 @@ const (
 
 var (
 	spinnerChars      = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	dotsChars         = []string{"   ", ".  ", ".. ", "..."}
 	lastDisplayLength int       // Record the length of the previously displayed line
 	startTime         time.Time // Record the execution start time
+	hasTestsStarted   bool      // Track if any tests have started running
 )
 
 // exitWithCursorRestore ensures cursor is shown before program exits
@@ -82,6 +84,13 @@ func getSpinner() string {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 	index := (now / 100) % int64(len(spinnerChars))
 	return spinnerChars[index]
+}
+
+func getDots() string {
+	// Switch dot animation frames at 500ms intervals
+	now := time.Now().UnixNano() / int64(time.Millisecond)
+	index := (now / 500) % int64(len(dotsChars))
+	return dotsChars[index]
 }
 
 // smartDisplayLine compares the length of display content and updates the line appropriately
@@ -168,9 +177,7 @@ func main() {
 		exitWithCursorRestore(1)
 	}()
 
-	// Display the progress bar immediately after startup
-	content := fmt.Sprintf("%s%s Initializing...%s", colorBlue, getSpinner(), colorReset)
-	smartDisplayLine(content)
+	// Initial display will be handled by the periodic update goroutine
 
 	// Goroutine for periodic screen updates
 	ctx, cancel := context.WithCancel(context.Background())
@@ -234,6 +241,7 @@ func main() {
 			case "run":
 				result.Started = true
 				pkg.Running++
+				hasTestsStarted = true // Mark that tests have started
 
 				// Don't count parent tests that have subtests
 				// However, since subtests don't exist yet at the time of the run event
@@ -362,6 +370,17 @@ func main() {
 }
 
 func displayProgress(packages map[string]*PackageState) {
+	animation := getSpinner()
+	elapsed := time.Since(startTime)
+
+	// Show simple initialization message until first test starts
+	if !hasTestsStarted {
+		dots := getDots()
+		content := fmt.Sprintf("%s%s Initializing%s%s", colorBlue, animation, dots, colorReset)
+		smartDisplayLine(content)
+		return
+	}
+
 	totalTests := 0
 	totalPassed := 0
 	totalFailed := 0
@@ -376,9 +395,7 @@ func displayProgress(packages map[string]*PackageState) {
 		totalRunning += pkg.Running
 	}
 
-	// Display progress bar
-	animation := getSpinner()
-	elapsed := time.Since(startTime)
+	// Display detailed progress bar
 	content := fmt.Sprintf("%s%s Running: %d%s | %s✓ Passed: %d%s | %s✗ Failed: %d%s | %s⚡ Skipped: %d%s | %s⏱ %.1fs%s",
 		colorBlue, animation, totalRunning, colorReset,
 		colorGreen, totalPassed, colorReset,
