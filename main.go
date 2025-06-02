@@ -364,8 +364,11 @@ func main() {
 		exitWithCursorRestore(1)
 	}
 
+	// Clear the progress display before showing final results
+	fmt.Print("\r\033[K")
+	lastDisplayLength = 0
+
 	// Display final results
-	fmt.Println()
 	displayFinalResults(packages, results)
 }
 
@@ -516,9 +519,6 @@ func displayPackageFailure(packageName string, output []string) {
 }
 
 func displayFinalResults(packages map[string]*PackageState, results map[string]*TestResult) {
-	fmt.Println("\n" + strings.Repeat("=", 50))
-	fmt.Println("📊 Test Results Summary")
-	fmt.Println(strings.Repeat("=", 50))
 
 	// Collect data using the same method as progress display
 	totalTests := 0
@@ -529,32 +529,53 @@ func displayFinalResults(packages map[string]*PackageState, results map[string]*
 	exitCode := 0
 
 	// First collect overall statistics (same method as progress display)
+	hasAnyFailures := false
 	for _, pkg := range packages {
 		totalTests += pkg.Total
 		totalPassed += pkg.Passed
 		totalFailed += pkg.Failed
 		totalSkipped += pkg.Skipped
 		totalElapsed += pkg.Elapsed
-	}
-
-	for pkgName, pkg := range packages {
-		// Check if there is a Package Fail
-		hasPackageFail := false
-		if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkgName)]; exists {
+		
+		// Check if there are any failures in this package
+		if pkg.Failed > 0 {
+			hasAnyFailures = true
+		}
+		// Also check for package-level failures
+		if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkg.Name)]; exists {
 			if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
-				hasPackageFail = true
+				hasAnyFailures = true
 			}
 		}
+	}
+	
+	// Only show the summary section if there are failures
+	if hasAnyFailures {
+		fmt.Println("\n" + strings.Repeat("=", 50))
+		fmt.Println("📊 Failed Tests Summary")
+		fmt.Println(strings.Repeat("=", 50))
+	}
 
-		// Skip if there are 0 tests and no Package Fail
-		if pkg.Total == 0 && !hasPackageFail {
-			continue
-		}
+	// Only process packages if there are failures to show
+	if hasAnyFailures {
+		for pkgName, pkg := range packages {
+			// Check if there is a Package Fail
+			hasPackageFail := false
+			if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkgName)]; exists {
+				if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
+					hasPackageFail = true
+				}
+			}
 
-		// Display only if there are failures or Package Fail
-		if pkg.Failed == 0 && !hasPackageFail {
-			continue
-		}
+			// Skip if there are 0 tests and no Package Fail
+			if pkg.Total == 0 && !hasPackageFail {
+				continue
+			}
+
+			// Display only if there are failures or Package Fail
+			if pkg.Failed == 0 && !hasPackageFail {
+				continue
+			}
 
 		// Count as failure if there is Package Fail (unused but kept for future extension)
 		_ = hasPackageFail
@@ -608,14 +629,17 @@ func displayFinalResults(packages map[string]*PackageState, results map[string]*
 			}
 		}
 	}
+	}
 
 	// Overall summary
-	fmt.Println("\n" + strings.Repeat("-", 50))
+	if hasAnyFailures {
+		fmt.Println("\n" + strings.Repeat("-", 50))
+	}
 
 	// Don't calculate duplicates since Package Fail is already counted in progress display
 	// Use the time measured within the CLI for overall execution time
 	actualElapsed := time.Since(startTime)
-	fmt.Printf("Total: %d tests | %s✓ Passed: %d%s | %s✗ Failed: %d%s | %s⚡ Skipped: %d%s | %s⏱ %.2fs%s\n",
+	fmt.Printf("\nTotal: %d tests | %s✓ Passed: %d%s | %s✗ Failed: %d%s | %s⚡ Skipped: %d%s | %s⏱ %.2fs%s\n",
 		totalTests,
 		colorGreen, totalPassed, colorReset,
 		colorRed, totalFailed, colorReset,
