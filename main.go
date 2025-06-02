@@ -79,18 +79,18 @@ func exitWithCursorRestore(code int) {
 	os.Exit(code)
 }
 
-func getSpinner() string {
-	// Switch animation frames at 100ms intervals
+func getAnimation(chars []string, intervalMs int64) string {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
-	index := (now / 100) % int64(len(spinnerChars))
-	return spinnerChars[index]
+	index := (now / intervalMs) % int64(len(chars))
+	return chars[index]
+}
+
+func getSpinner() string {
+	return getAnimation(spinnerChars, 100)
 }
 
 func getDots() string {
-	// Switch dot animation frames at 500ms intervals
-	now := time.Now().UnixNano() / int64(time.Millisecond)
-	index := (now / 500) % int64(len(dotsChars))
-	return dotsChars[index]
+	return getAnimation(dotsChars, 500)
 }
 
 // smartDisplayLine compares the length of display content and updates the line appropriately
@@ -141,6 +141,119 @@ func showHelp() {
 	fmt.Println("  -help  Show this help message")
 }
 
+func isParentWithSubtests(testName, packageName string, results map[string]*TestResult) bool {
+	if strings.Contains(testName, "/") {
+		return false
+	}
+	for existingKey := range results {
+		if strings.HasPrefix(existingKey, fmt.Sprintf("%s/%s/", packageName, testName)) {
+			return true
+		}
+	}
+	return false
+}
+
+func processTestEvent(event TestEvent, results map[string]*TestResult, packages map[string]*PackageState) {
+	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
+	if _, exists := results[key]; !exists {
+		results[key] = &TestResult{
+			Package: event.Package,
+			Test:    event.Test,
+			Output:  []string{},
+		}
+	}
+	result := results[key]
+	pkg := packages[event.Package]
+
+	// Mark parent test for subtests
+	if strings.Contains(event.Test, "/") {
+		parentTestName := strings.Split(event.Test, "/")[0]
+		parentKey := fmt.Sprintf("%s/%s", event.Package, parentTestName)
+		if parentResult, exists := results[parentKey]; exists {
+			parentResult.HasSubtest = true
+		}
+	}
+
+	switch event.Action {
+	case "run":
+		result.Started = true
+		pkg.Running++
+		hasTestsStarted = true
+		pkg.Total++
+	case "output":
+		result.Output = append(result.Output, event.Output)
+		if result.Location == "" {
+			if location := extractFileLocation(event.Output); location != "" {
+				result.Location = location
+			}
+		}
+	case "pass":
+		result.Passed = true
+		result.Elapsed = event.Elapsed
+		pkg.Running--
+		if !isParentWithSubtests(event.Test, event.Package, results) {
+			pkg.Passed++
+		}
+		displayTestResult(result, true)
+	case "fail":
+		result.Failed = true
+		result.Elapsed = event.Elapsed
+		pkg.Running--
+		if !isParentWithSubtests(event.Test, event.Package, results) {
+			pkg.Failed++
+			pkg.IndividualTestFailed++
+		}
+		displayTestResult(result, false)
+	case "skip":
+		result.Skipped = true
+		result.Elapsed = event.Elapsed
+		pkg.Running--
+		if !isParentWithSubtests(event.Test, event.Package, results) {
+			pkg.Skipped++
+		}
+		displayTestResult(result, true)
+	}
+}
+
+func processPackageEvent(event TestEvent, results map[string]*TestResult, packages map[string]*PackageState) {
+	pkg := packages[event.Package]
+	switch event.Action {
+	case "output":
+		pkg.Output = append(pkg.Output, event.Output)
+	case "pass":
+		pkg.Elapsed = event.Elapsed
+	case "fail":
+		pkg.Elapsed = event.Elapsed
+		key := fmt.Sprintf("%s/[PACKAGE]", event.Package)
+		results[key] = &TestResult{
+			Package: event.Package,
+			Test:    "[PACKAGE]",
+			Failed:  true,
+			Elapsed: event.Elapsed,
+			Output:  pkg.Output,
+		}
+		if shouldDisplayPackageFailure(pkg) {
+			pkg.Total++
+			pkg.Failed++
+			displayPackageFailure(event.Package, pkg.Output)
+		}
+	}
+}
+
+func setupSignalHandling() {
+	// Hide cursor
+	fmt.Print("\033[?25l")
+	defer fmt.Print("\033[?25h")
+
+	// Handle interruption signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		exitWithCursorRestore(1)
+	}()
+}
+
 func main() {
 	help := flag.Bool("help", false, "Show help message")
 	flag.Parse()
@@ -162,44 +275,16 @@ func main() {
 	packages := make(map[string]*PackageState)
 	var mu sync.RWMutex
 
-	// Record the execution start time
+	// Initialize timing and setup
 	startTime = time.Now()
+	setupSignalHandling()
 
-	// Hide the cursor
-	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h") // Show the cursor again when the program exits normally
-
-	// Ensure the cursor is shown again through signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		exitWithCursorRestore(1)
-	}()
-
-	// Initial display will be handled by the periodic update goroutine
-
-	// Goroutine for periodic screen updates
+	// Start progress display goroutine
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go startProgressDisplay(ctx, &mu, packages)
 
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				mu.RLock()
-				// Always display the progress bar (during compilation or test execution)
-				displayProgress(packages)
-				mu.RUnlock()
-			}
-		}
-	}()
-
+	// Process JSON events from stdin
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		var event TestEvent
@@ -208,153 +293,16 @@ func main() {
 		}
 
 		mu.Lock()
-		// Initialize the package
+		// Initialize package if needed
 		if _, exists := packages[event.Package]; !exists && event.Package != "" {
-			packages[event.Package] = &PackageState{
-				Name: event.Package,
-			}
+			packages[event.Package] = &PackageState{Name: event.Package}
 		}
 
-		// Track test results
+		// Process events
 		if event.Test != "" {
-			key := fmt.Sprintf("%s/%s", event.Package, event.Test)
-			if _, exists := results[key]; !exists {
-				results[key] = &TestResult{
-					Package: event.Package,
-					Test:    event.Test,
-					Output:  []string{},
-				}
-			}
-			result := results[key]
-			pkg := packages[event.Package]
-
-			// In case of subtest, mark the parent test
-			if strings.Contains(event.Test, "/") {
-				parentTestName := strings.Split(event.Test, "/")[0]
-				parentKey := fmt.Sprintf("%s/%s", event.Package, parentTestName)
-				if parentResult, exists := results[parentKey]; exists {
-					parentResult.HasSubtest = true
-				}
-			}
-
-			switch event.Action {
-			case "run":
-				result.Started = true
-				pkg.Running++
-				hasTestsStarted = true // Mark that tests have started
-
-				// Don't count parent tests that have subtests
-				// However, since subtests don't exist yet at the time of the run event
-				// We need to count everything first and adjust later
-				pkg.Total++
-			case "output":
-				result.Output = append(result.Output, event.Output)
-				// Extract filename and line number
-				if result.Location == "" {
-					location := extractFileLocation(event.Output)
-					if location != "" {
-						result.Location = location
-					}
-				}
-			case "pass":
-				result.Passed = true
-				result.Elapsed = event.Elapsed
-				pkg.Running--
-
-				// Don't count parent tests that have subtests
-				// For parent tests, since HasSubtest is set before subtest determination
-				// Determine by checking if the test name contains subtests
-				isParentWithSubtests := false
-				if !strings.Contains(event.Test, "/") {
-					// For parent tests, check if there are subtests in the same package
-					for existingKey := range results {
-						if strings.HasPrefix(existingKey, fmt.Sprintf("%s/%s/", event.Package, event.Test)) {
-							isParentWithSubtests = true
-							break
-						}
-					}
-				}
-
-				if !isParentWithSubtests {
-					pkg.Passed++
-				}
-				displayTestResult(result, true)
-			case "fail":
-				result.Failed = true
-				result.Elapsed = event.Elapsed
-				pkg.Running--
-
-				// Don't count parent tests that have subtests
-				// For parent tests, since HasSubtest is set before subtest determination
-				// Determine by checking if the test name contains subtests
-				isParentWithSubtests := false
-				if !strings.Contains(event.Test, "/") {
-					// For parent tests, check if there are subtests in the same package
-					for existingKey := range results {
-						if strings.HasPrefix(existingKey, fmt.Sprintf("%s/%s/", event.Package, event.Test)) {
-							isParentWithSubtests = true
-							break
-						}
-					}
-				}
-
-				if !isParentWithSubtests {
-					pkg.Failed++
-					pkg.IndividualTestFailed++ // Count the number of individual test failures
-				}
-				displayTestResult(result, false)
-			case "skip":
-				result.Skipped = true
-				result.Elapsed = event.Elapsed
-				pkg.Running--
-
-				// Don't count parent tests that have subtests
-				// For parent tests, since HasSubtest is set before subtest determination
-				// Determine by checking if the test name contains subtests
-				isParentWithSubtests := false
-				if !strings.Contains(event.Test, "/") {
-					// For parent tests, check if there are subtests in the same package
-					for existingKey := range results {
-						if strings.HasPrefix(existingKey, fmt.Sprintf("%s/%s/", event.Package, event.Test)) {
-							isParentWithSubtests = true
-							break
-						}
-					}
-				}
-
-				if !isParentWithSubtests {
-					pkg.Skipped++
-				}
-				displayTestResult(result, true)
-			}
+			processTestEvent(event, results, packages)
 		} else if event.Package != "" {
-			// Package-level events
-			pkg := packages[event.Package]
-			switch event.Action {
-			case "output":
-				// Accumulate package-level output
-				pkg.Output = append(pkg.Output, event.Output)
-			case "pass":
-				pkg.Elapsed = event.Elapsed
-			case "fail":
-				pkg.Elapsed = event.Elapsed
-				// Record package-level failure (using accumulated output)
-				key := fmt.Sprintf("%s/[PACKAGE]", event.Package)
-				results[key] = &TestResult{
-					Package: event.Package,
-					Test:    "[PACKAGE]",
-					Failed:  true,
-					Elapsed: event.Elapsed,
-					Output:  pkg.Output, // Use accumulated output
-				}
-
-				// In case of Package Fail, update statistics for progress display
-				if shouldDisplayPackageFailure(pkg) {
-					pkg.Total++  // Include Package Fail in the test count
-					pkg.Failed++ // Increase the Failed count
-					displayPackageFailure(event.Package, pkg.Output)
-				}
-			}
+			processPackageEvent(event, results, packages)
 		}
 		mu.Unlock()
 	}
@@ -364,12 +312,26 @@ func main() {
 		exitWithCursorRestore(1)
 	}
 
-	// Clear the progress display before showing final results
+	// Clear progress and show final results
 	fmt.Print("\r\033[K")
 	lastDisplayLength = 0
-
-	// Display final results
 	displayFinalResults(packages, results)
+}
+
+func startProgressDisplay(ctx context.Context, mu *sync.RWMutex, packages map[string]*PackageState) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			mu.RLock()
+			displayProgress(packages)
+			mu.RUnlock()
+		}
+	}
 }
 
 func displayProgress(packages map[string]*PackageState) {
@@ -518,136 +480,129 @@ func displayPackageFailure(packageName string, output []string) {
 	}
 }
 
-func displayFinalResults(packages map[string]*PackageState, results map[string]*TestResult) {
+type summaryStats struct {
+	totalTests   int
+	totalPassed  int
+	totalFailed  int
+	totalSkipped int
+	hasFailures  bool
+}
 
-	// Collect data using the same method as progress display
-	totalTests := 0
-	totalPassed := 0
-	totalFailed := 0
-	totalSkipped := 0
-	var totalElapsed float64
-	exitCode := 0
-
-	// First collect overall statistics (same method as progress display)
-	hasAnyFailures := false
+func collectSummaryStats(packages map[string]*PackageState, results map[string]*TestResult) summaryStats {
+	stats := summaryStats{}
 	for _, pkg := range packages {
-		totalTests += pkg.Total
-		totalPassed += pkg.Passed
-		totalFailed += pkg.Failed
-		totalSkipped += pkg.Skipped
-		totalElapsed += pkg.Elapsed
-		
-		// Check if there are any failures in this package
+		stats.totalTests += pkg.Total
+		stats.totalPassed += pkg.Passed
+		stats.totalFailed += pkg.Failed
+		stats.totalSkipped += pkg.Skipped
+
 		if pkg.Failed > 0 {
-			hasAnyFailures = true
+			stats.hasFailures = true
 		}
-		// Also check for package-level failures
+		// Check for package-level failures
 		if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkg.Name)]; exists {
 			if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
-				hasAnyFailures = true
+				stats.hasFailures = true
 			}
 		}
 	}
-	
-	// Only show the summary section if there are failures
-	if hasAnyFailures {
+	return stats
+}
+
+func displayFailedTestsFor(pkgName string, pkg *PackageState, results map[string]*TestResult) {
+	for _, result := range results {
+		if result.Package == pkgName && result.Failed && result.Test != "[PACKAGE]" && !result.HasSubtest {
+			if result.Location != "" {
+				fmt.Printf("    %s✗ %s%s %s[%s]%s %s(%.2fs)%s\n",
+					colorRed, result.Test, colorReset, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+			} else {
+				fmt.Printf("    %s✗ %s%s %s(%.2fs)%s\n",
+					colorRed, result.Test, colorReset, colorGray, result.Elapsed, colorReset)
+			}
+		}
+	}
+}
+
+func displayPackageSummary(pkgName string, pkg *PackageState, results map[string]*TestResult) int {
+	// Check if there is a Package Fail
+	hasPackageFail := false
+	if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkgName)]; exists {
+		if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
+			hasPackageFail = true
+		}
+	}
+
+	// Skip if there are 0 tests and no Package Fail
+	if pkg.Total == 0 && !hasPackageFail {
+		return 0
+	}
+
+	// Display only if there are failures or Package Fail
+	if pkg.Failed == 0 && !hasPackageFail {
+		return 0
+	}
+
+	status := colorGreen + "✓ PASS" + colorReset
+	exitCode := 0
+	if pkg.Failed > 0 || hasPackageFail {
+		if hasPackageFail && pkg.Failed == 0 {
+			status = colorRed + "✗ PACKAGE FAIL" + colorReset
+		} else {
+			status = colorRed + "✗ FAIL" + colorReset
+		}
+		exitCode = 1
+	}
+
+	fmt.Printf("\n%s %s %s(%.2fs)%s\n", status, pkgName, colorGray, pkg.Elapsed, colorReset)
+
+	// Don't display details when only Package Fail
+	if hasPackageFail && pkg.Failed == 0 {
+		return exitCode
+	}
+
+	// Display test statistics
+	fmt.Printf("  Tests: %d | Passed: %d | Failed: %d | Skipped: %d\n",
+		pkg.Total, pkg.Passed, pkg.Failed, pkg.Skipped)
+
+	// Display individual test failures
+	if pkg.Failed > 0 {
+		fmt.Printf("\n")
+		displayFailedTestsFor(pkgName, pkg, results)
+	}
+
+	return exitCode
+}
+
+func displayFinalResults(packages map[string]*PackageState, results map[string]*TestResult) {
+	stats := collectSummaryStats(packages, results)
+	exitCode := 0
+
+	// Show failure summary if there are any failures
+	if stats.hasFailures {
 		fmt.Println("\n" + strings.Repeat("=", 50))
 		fmt.Println("📊 Failed Tests Summary")
 		fmt.Println(strings.Repeat("=", 50))
-	}
 
-	// Only process packages if there are failures to show
-	if hasAnyFailures {
 		for pkgName, pkg := range packages {
-			// Check if there is a Package Fail
-			hasPackageFail := false
-			if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkgName)]; exists {
-				if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
-					hasPackageFail = true
-				}
-			}
-
-			// Skip if there are 0 tests and no Package Fail
-			if pkg.Total == 0 && !hasPackageFail {
-				continue
-			}
-
-			// Display only if there are failures or Package Fail
-			if pkg.Failed == 0 && !hasPackageFail {
-				continue
-			}
-
-		// Count as failure if there is Package Fail (unused but kept for future extension)
-		_ = hasPackageFail
-
-		status := colorGreen + "✓ PASS" + colorReset
-		if pkg.Failed > 0 || hasPackageFail {
-			if hasPackageFail && pkg.Failed == 0 {
-				// When only Package Fail
-				status = colorRed + "✗ PACKAGE FAIL" + colorReset
-			} else {
-				// When there are individual test failures
-				status = colorRed + "✗ FAIL" + colorReset
-			}
-			exitCode = 1
-		}
-
-		fmt.Printf("\n%s %s %s(%.2fs)%s\n", status, pkgName, colorGray, pkg.Elapsed, colorReset)
-
-		// Don't display details when only Package Fail
-		if hasPackageFail && pkg.Failed == 0 {
-			// Display nothing when only Package Fail (title line only)
-		} else {
-			// Display details only when there are individual test failures
-			// Avoid duplication if Package Fail is already counted in progress display
-			totalTests := pkg.Total
-			totalFailedInPkg := pkg.Failed
-			fmt.Printf("  Tests: %d | Passed: %d | Failed: %d | Skipped: %d\n",
-				totalTests, pkg.Passed, totalFailedInPkg, pkg.Skipped)
-
-			// Details of failed tests
-			if pkg.Failed > 0 || hasPackageFail {
-				// Don't display 'Failed Tests:' when only Package Fail
-				if pkg.Failed > 0 {
-					fmt.Printf("\n")
-
-					// Display individual test failures
-					for _, result := range results {
-						if result.Package == pkgName && result.Failed && result.Test != "[PACKAGE]" && !result.HasSubtest {
-							// Don't display parent tests that have subtests
-							// Display if location information is available
-							if result.Location != "" {
-								fmt.Printf("    %s✗ %s%s %s[%s]%s %s(%.2fs)%s\n",
-									colorRed, result.Test, colorReset, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
-							} else {
-								fmt.Printf("    %s✗ %s%s %s(%.2fs)%s\n",
-									colorRed, result.Test, colorReset, colorGray, result.Elapsed, colorReset)
-							}
-						}
-					}
-				}
+			if code := displayPackageSummary(pkgName, pkg, results); code != 0 {
+				exitCode = code
 			}
 		}
-	}
-	}
 
-	// Overall summary
-	if hasAnyFailures {
 		fmt.Println("\n" + strings.Repeat("-", 50))
 	}
 
-	// Don't calculate duplicates since Package Fail is already counted in progress display
-	// Use the time measured within the CLI for overall execution time
+	// Overall summary
 	actualElapsed := time.Since(startTime)
 	fmt.Printf("\nTotal: %d tests | %s✓ Passed: %d%s | %s✗ Failed: %d%s | %s⚡ Skipped: %d%s | %s⏱ %.2fs%s\n",
-		totalTests,
-		colorGreen, totalPassed, colorReset,
-		colorRed, totalFailed, colorReset,
-		colorYellow, totalSkipped, colorReset,
+		stats.totalTests,
+		colorGreen, stats.totalPassed, colorReset,
+		colorRed, stats.totalFailed, colorReset,
+		colorYellow, stats.totalSkipped, colorReset,
 		colorGray, actualElapsed.Seconds(), colorReset)
 
-	// Determine if there are failures (Package Fail already counted in progress display)
-	if exitCode != 0 || totalFailed > 0 {
+	// Exit with appropriate code
+	if exitCode != 0 || stats.totalFailed > 0 {
 		fmt.Printf("\n%s❌ Tests failed!%s\n", colorRed, colorReset)
 		exitWithCursorRestore(1)
 	} else {
