@@ -71,6 +71,12 @@ var (
 	startTime         time.Time // Record the execution start time
 )
 
+// exitWithCursorRestore ensures cursor is shown before program exits
+func exitWithCursorRestore(code int) {
+	fmt.Print("\033[?25h") // Show the cursor again
+	os.Exit(code)
+}
+
 func getSpinner() string {
 	// Switch animation frames at 100ms intervals
 	now := time.Now().UnixNano() / int64(time.Millisecond)
@@ -132,7 +138,7 @@ func main() {
 
 	if *help {
 		showHelp()
-		os.Exit(0)
+		exitWithCursorRestore(0)
 	}
 
 	// Check if stdin has input
@@ -140,7 +146,7 @@ func main() {
 	if (stat.Mode() & os.ModeCharDevice) != 0 {
 		// No input from pipe
 		showHelp()
-		os.Exit(0)
+		exitWithCursorRestore(0)
 	}
 
 	results := make(map[string]*TestResult)
@@ -152,15 +158,14 @@ func main() {
 
 	// Hide the cursor
 	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h") // Show the cursor again when the program exits
+	defer fmt.Print("\033[?25h") // Show the cursor again when the program exits normally
 
 	// Ensure the cursor is shown again through signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Print("\033[?25h") // Show the cursor again
-		os.Exit(1)
+		exitWithCursorRestore(1)
 	}()
 
 	// Display the progress bar immediately after startup
@@ -348,7 +353,7 @@ func main() {
 
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
-		os.Exit(1)
+		exitWithCursorRestore(1)
 	}
 
 	// Display final results
@@ -603,8 +608,9 @@ func displayFinalResults(packages map[string]*PackageState, results map[string]*
 	// Determine if there are failures (Package Fail already counted in progress display)
 	if exitCode != 0 || totalFailed > 0 {
 		fmt.Printf("\n%s❌ Tests failed!%s\n", colorRed, colorReset)
-		os.Exit(1)
+		exitWithCursorRestore(1)
 	} else {
 		fmt.Printf("\n%s✨ All tests passed!%s\n", colorGreen, colorReset)
+		exitWithCursorRestore(0)
 	}
 }
