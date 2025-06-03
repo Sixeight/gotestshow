@@ -243,7 +243,6 @@ func processPackageEvent(event TestEvent, results map[string]*TestResult, packag
 func setupSignalHandling() {
 	// Hide cursor
 	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h")
 
 	// Handle interruption signals
 	sigChan := make(chan os.Signal, 1)
@@ -278,6 +277,9 @@ func main() {
 	// Initialize timing and setup
 	startTime = time.Now()
 	setupSignalHandling()
+
+	// Ensure cursor is restored when main function exits
+	defer fmt.Print("\033[?25h")
 
 	// Start progress display goroutine
 	ctx, cancel := context.WithCancel(context.Background())
