@@ -7,22 +7,18 @@ A CLI tool that displays `go test -json` output in a real-time, human-friendly f
 ## Features
 
 ### 🚀 Real-time Progress Display
+
 - Animated spinner to visualize execution state
 - Real-time updates of running, passed, failed, and skipped test counts
 - Dynamic elapsed time display
 
 ### 🎯 Smart Result Display
+
 - **Passed tests**: Update progress counter only (reduces noise)
 - **Failed tests**: Show detailed information immediately
   - Test name and file location (e.g., `math_test.go:47`)
   - Execution time and error messages
 - **Skipped tests**: Update counter only
-
-### 📦 Advanced Features
-- Proper handling of subtests (`t.Run()`)
-- Support for parallel tests (`t.Parallel()`)
-- Package-level failure detection (build errors, syntax errors, etc.)
-- Optimized screen updates to prevent flickering
 
 ## Installation
 
@@ -42,12 +38,6 @@ go test -json ./... | gotestshow
 
 ```bash
 go test -json ./pkg/... | gotestshow
-```
-
-### Run with Verbose Mode
-
-```bash
-go test -v -json ./... | gotestshow
 ```
 
 ## Example Output
@@ -118,3 +108,4 @@ Sixeight
 ---
 
 *Made to improve the Go testing experience* ✨
+
