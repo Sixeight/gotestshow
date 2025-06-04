@@ -85,6 +85,13 @@ Standard `go test` output can be difficult to read, especially with large test s
 3. **Visual progress**: Current state is clear at a glance, even with large test suites
 4. **CI/CD friendly**: Reads from stdin, making it easy to integrate into existing workflows
 
+## Related Projects
+
+- [gotestfmt](https://github.com/GoTestTools/gotestfmt) - Format `go test` output for improved readability.
+- [gotestsum](https://github.com/gotestyourself/gotestsum) - Summarize `go test` results.
+- [richgo](https://github.com/kyoh86/richgo) - Colored test output enhancement.
+
+
 ## Development
 
 ### Build
