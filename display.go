@@ -19,6 +19,7 @@ type Display interface {
 	ShowFinalResults(packages map[string]*PackageState, results map[string]*TestResult, startTime time.Time) int
 	ShowHelp()
 	ClearLine()
+	SetConfig(config *Config)
 }
 
 // TerminalDisplay implements Display for terminal output
@@ -26,6 +27,7 @@ type TerminalDisplay struct {
 	writer            io.Writer
 	lastDisplayLength int
 	colorEnabled      bool
+	config            *Config
 }
 
 // NewTerminalDisplay creates a new TerminalDisplay
@@ -34,6 +36,11 @@ func NewTerminalDisplay(writer io.Writer, colorEnabled bool) Display {
 		writer:       writer,
 		colorEnabled: colorEnabled,
 	}
+}
+
+// SetConfig sets the configuration for the display
+func (d *TerminalDisplay) SetConfig(config *Config) {
+	d.config = config
 }
 
 // Animation provides animated characters for display
@@ -105,6 +112,71 @@ func (d *TerminalDisplay) ShowProgress(packages map[string]*PackageState, hasTes
 
 // ShowTestResult displays the result of a single test
 func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
+	// In timing mode, show all test results with execution time
+	if d.config != nil && d.config.TimingMode {
+		// Don't display if parent test with subtests fails (only display subtest failures)
+		if result.HasSubtest {
+			return
+		}
+
+		// Format execution time
+		elapsed := formatDuration(result.Elapsed)
+
+		// Check if test is slow
+		isSlow := false
+		if d.config.Threshold > 0 && time.Duration(result.Elapsed*float64(time.Second)) > d.config.Threshold {
+			isSlow = true
+		}
+
+		// In timing mode, only show slow tests or failed tests
+		if !isSlow && !result.Failed {
+			return
+		}
+
+		// Display test result with timing
+		var icon, color string
+		switch {
+		case result.Failed:
+			icon = "✗"
+			color = colorRed
+		case result.Skipped:
+			icon = "⚡"
+			color = colorYellow
+		case result.Passed:
+			icon = "✓"
+			color = colorGreen
+		}
+
+		// Display test result with timing and slow indicator if applicable
+		slowIndicator := ""
+		if isSlow {
+			slowIndicator = fmt.Sprintf(" %s[SLOW]%s", colorRed, colorReset)
+		}
+
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s[%s]%s %s(%s)%s%s\n",
+				color, icon, colorReset, result.Test, colorBlue, result.Location, colorReset,
+				colorGray, elapsed, colorReset, slowIndicator)
+		} else {
+			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s(%s)%s%s\n",
+				color, icon, colorReset, result.Test, colorGray, elapsed, colorReset, slowIndicator)
+		}
+
+		// Show error output for failed tests
+		if result.Failed {
+			relevantOutput := extractRelevantOutput(result.Output)
+			if len(relevantOutput) > 0 {
+				fmt.Fprintf(d.writer, "\n")
+				for _, line := range relevantOutput {
+					fmt.Fprintf(d.writer, "        %s%s%s", colorRed, line, colorReset)
+				}
+				fmt.Fprintf(d.writer, "\n")
+			}
+		}
+		return
+	}
+
+	// Normal mode - only show failures
 	if success {
 		// Don't display PASSED and SKIPPED tests (only update progress bar numbers)
 		return
@@ -159,6 +231,11 @@ func (d *TerminalDisplay) ShowFinalResults(packages map[string]*PackageState, re
 	stats := collectSummaryStats(packages, results)
 	exitCode := 0
 
+	// In timing mode, show slow tests summary
+	if d.config != nil && d.config.TimingMode {
+		d.showSlowTestsSummary(results)
+	}
+
 	// Show failure summary if there are any failures
 	if stats.hasFailures {
 		fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
@@ -198,7 +275,13 @@ func (d *TerminalDisplay) ShowHelp() {
 	fmt.Fprintln(d.writer, "gotestshow - A real-time formatter for `go test -json` output")
 	fmt.Fprintln(d.writer)
 	fmt.Fprintln(d.writer, "Usage:")
-	fmt.Fprintln(d.writer, "  go test -json ./... | gotestshow")
+	fmt.Fprintln(d.writer, "  go test -json ./... | gotestshow [flags]")
+	fmt.Fprintln(d.writer)
+	fmt.Fprintln(d.writer, "Flags:")
+	fmt.Fprintln(d.writer, "  -timing         Enable timing mode to show only slow tests and failures")
+	fmt.Fprintln(d.writer, "  -threshold      Threshold for slow tests (default: 500ms)")
+	fmt.Fprintln(d.writer, "                  Examples: 1s, 500ms, 1.5s")
+	fmt.Fprintln(d.writer, "  -help           Show this help message")
 	fmt.Fprintln(d.writer)
 	fmt.Fprintln(d.writer, "Description:")
 	fmt.Fprintln(d.writer, "  gotestshow reads JSON-formatted test output from stdin and displays")
@@ -220,8 +303,8 @@ func (d *TerminalDisplay) ShowHelp() {
 	fmt.Fprintln(d.writer, "  # Run specific test")
 	fmt.Fprintln(d.writer, "  go test -json -run TestName ./... | gotestshow")
 	fmt.Fprintln(d.writer)
-	fmt.Fprintln(d.writer, "Options:")
-	fmt.Fprintln(d.writer, "  -help  Show this help message")
+	fmt.Fprintln(d.writer, "  # Enable timing mode with custom threshold")
+	fmt.Fprintln(d.writer, "  go test -json ./... | gotestshow -timing -threshold=1s")
 }
 
 // ClearLine clears the current line
@@ -347,6 +430,69 @@ func collectSummaryStats(packages map[string]*PackageState, results map[string]*
 		}
 	}
 	return stats
+}
+
+// formatDuration formats a duration in seconds to a human-readable string
+func formatDuration(seconds float64) string {
+	if seconds < 1.0 {
+		return fmt.Sprintf("%.0fms", seconds*1000)
+	}
+	return fmt.Sprintf("%.3fs", seconds)
+}
+
+// showSlowTestsSummary displays a summary of slow tests
+func (d *TerminalDisplay) showSlowTestsSummary(results map[string]*TestResult) {
+	// Collect slow tests
+	type slowTest struct {
+		name     string
+		elapsed  float64
+		location string
+	}
+
+	var slowTests []slowTest
+	for _, result := range results {
+		if result.HasSubtest || result.Test == "[PACKAGE]" {
+			continue
+		}
+
+		testDuration := time.Duration(result.Elapsed * float64(time.Second))
+		if testDuration > d.config.Threshold {
+			slowTests = append(slowTests, slowTest{
+				name:     result.Test,
+				elapsed:  result.Elapsed,
+				location: result.Location,
+			})
+		}
+	}
+
+	if len(slowTests) == 0 {
+		return
+	}
+
+	// Sort by elapsed time (slowest first)
+	for i := 0; i < len(slowTests)-1; i++ {
+		for j := i + 1; j < len(slowTests); j++ {
+			if slowTests[j].elapsed > slowTests[i].elapsed {
+				slowTests[i], slowTests[j] = slowTests[j], slowTests[i]
+			}
+		}
+	}
+
+	// Display slow tests summary
+	fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
+	fmt.Fprintf(d.writer, "🐢 Slow Tests (>%s)\n", d.config.Threshold)
+	fmt.Fprintln(d.writer, strings.Repeat("=", 50))
+
+	for _, test := range slowTests {
+		elapsed := formatDuration(test.elapsed)
+		if test.location != "" {
+			fmt.Fprintf(d.writer, "  %s %s[%s]%s %s(%s)%s\n",
+				test.name, colorBlue, test.location, colorReset, colorRed, elapsed, colorReset)
+		} else {
+			fmt.Fprintf(d.writer, "  %s %s(%s)%s\n",
+				test.name, colorRed, elapsed, colorReset)
+		}
+	}
 }
 
 // ProgressRunner manages the progress display goroutine

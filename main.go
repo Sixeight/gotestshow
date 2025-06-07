@@ -5,6 +5,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 )
@@ -64,11 +65,32 @@ type summaryStats struct {
 	hasFailures  bool
 }
 
+// Config holds the configuration for gotestshow
+type Config struct {
+	TimingMode bool
+	Threshold  time.Duration
+}
+
 func main() {
 	help := flag.Bool("help", false, "Show help message")
+	timing := flag.Bool("timing", false, "Enable timing mode to show only slow tests and failures")
+	threshold := flag.String("threshold", "500ms", "Threshold for slow tests (e.g., 1s, 500ms)")
 	flag.Parse()
 
+	// Parse threshold duration
+	thresholdDuration, err := time.ParseDuration(*threshold)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid threshold format: %s\n", err)
+		os.Exit(1)
+	}
+
+	config := &Config{
+		TimingMode: *timing,
+		Threshold:  thresholdDuration,
+	}
+
 	display := NewTerminalDisplay(os.Stdout, true)
+	display.SetConfig(config)
 
 	if *help {
 		display.ShowHelp()
@@ -85,6 +107,7 @@ func main() {
 
 	processor := NewEventProcessor()
 	runner := NewRunner(processor, display, os.Stdin, os.Stdout)
+	runner.SetConfig(config)
 	exitCode := runner.Run()
 	os.Exit(exitCode)
 }

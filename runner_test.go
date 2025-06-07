@@ -102,6 +102,10 @@ func (m *MockDisplay) ClearLine() {
 	// No-op for mock
 }
 
+func (m *MockDisplay) SetConfig(config *Config) {
+	// No-op for mock
+}
+
 func TestRunner_Run_Success(t *testing.T) {
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestExample"}
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"example","Test":"TestExample","Elapsed":0.1}

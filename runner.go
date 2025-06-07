@@ -21,6 +21,7 @@ type Runner struct {
 	display   Display
 	input     io.Reader
 	output    io.Writer
+	config    *Config
 }
 
 // NewRunner creates a new Runner instance
@@ -31,6 +32,11 @@ func NewRunner(processor EventProcessor, display Display, input io.Reader, outpu
 		input:     input,
 		output:    output,
 	}
+}
+
+// SetConfig sets the configuration for the runner
+func (r *Runner) SetConfig(config *Config) {
+	r.config = config
 }
 
 // Run executes the main application logic
