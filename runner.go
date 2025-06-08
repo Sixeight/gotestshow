@@ -65,9 +65,31 @@ func (r *Runner) Run() int {
 
 	// Process JSON events from input
 	scanner := bufio.NewScanner(r.input)
+	jsonErrorCount := 0
+	totalLines := 0
+
 	for scanner.Scan() {
+		totalLines++
+		line := scanner.Bytes()
+
 		var event TestEvent
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+		if err := json.Unmarshal(line, &event); err != nil {
+			jsonErrorCount++
+
+			// If first line is not JSON, it's likely not JSON input at all
+			if totalLines == 1 && len(line) > 0 {
+				// Stop progress display
+				cancel()
+				time.Sleep(50 * time.Millisecond)
+				r.display.ClearLine()
+
+				// Show help message
+				fmt.Fprintln(r.output, "\nError: Input is not in JSON format.")
+				fmt.Fprintln(r.output, "gotestshow expects JSON output from 'go test -json'.")
+				fmt.Fprintln(r.output)
+				r.display.ShowHelp()
+				return 1
+			}
 			continue
 		}
 
