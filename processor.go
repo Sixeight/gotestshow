@@ -212,6 +212,12 @@ func shouldDisplayPackageFailure(pkg *PackageState) bool {
 		}
 	}
 
+	// If package failed but no individual tests failed (setup/teardown errors)
+	// This happens when test initialization fails before any tests can run
+	if pkg.IndividualTestFailed == 0 && pkg.Total > 0 {
+		return true
+	}
+
 	// If no individual tests exist (0 tests) and the package fails
 	if pkg.Total == 0 && len(pkg.Output) > 0 {
 		return true

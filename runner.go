@@ -59,7 +59,6 @@ func (r *Runner) Run() int {
 
 	// Start progress display goroutine
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	progressRunner := NewProgressRunner(r.display, r.processor, 100*time.Millisecond)
 	go progressRunner.Run(ctx, startTime)
@@ -90,10 +89,16 @@ func (r *Runner) Run() int {
 		}
 	}
 
+	// Stop progress display immediately after scanner loop ends
+	cancel()
+
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 		return 1
 	}
+
+	// Wait a bit for progress goroutine to stop
+	time.Sleep(50 * time.Millisecond)
 
 	// Clear progress and show final results
 	r.display.ClearLine()
