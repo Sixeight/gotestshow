@@ -28,6 +28,7 @@ type TerminalDisplay struct {
 	lastDisplayLength int
 	colorEnabled      bool
 	config            *Config
+	packages          map[string]*PackageState
 }
 
 // NewTerminalDisplay creates a new TerminalDisplay
@@ -35,6 +36,7 @@ func NewTerminalDisplay(writer io.Writer, colorEnabled bool) Display {
 	return &TerminalDisplay{
 		writer:       writer,
 		colorEnabled: colorEnabled,
+		packages:     make(map[string]*PackageState),
 	}
 }
 
@@ -73,6 +75,9 @@ func (a *Animation) getAnimation(chars []string, intervalMs int64) string {
 
 // ShowProgress displays the current test progress
 func (d *TerminalDisplay) ShowProgress(packages map[string]*PackageState, hasTestsStarted bool, startTime time.Time) {
+	// Update packages for use in ShowTestResult
+	d.packages = packages
+
 	animation := NewAnimation()
 	spinner := animation.GetSpinner()
 	elapsed := time.Since(startTime)
@@ -153,13 +158,20 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 			slowIndicator = fmt.Sprintf(" %s[SLOW]%s", colorRed, colorReset)
 		}
 
+		// Check if we should show package name (only when multiple packages)
+		packageInfo := ""
+		if shouldShowPackageName(d.packages) {
+			shortPkg := getShortPackageName(result.Package)
+			packageInfo = fmt.Sprintf(" %s%s%s", colorGray, shortPkg, colorReset)
+		}
+
 		if result.Location != "" {
-			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s[%s]%s %s(%s)%s%s\n",
+			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s[%s]%s %s(%s)%s%s%s\n",
 				color, icon, colorReset, result.Test, colorBlue, result.Location, colorReset,
-				colorGray, elapsed, colorReset, slowIndicator)
+				colorGray, elapsed, colorReset, slowIndicator, packageInfo)
 		} else {
-			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s(%s)%s%s\n",
-				color, icon, colorReset, result.Test, colorGray, elapsed, colorReset, slowIndicator)
+			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s(%s)%s%s%s\n",
+				color, icon, colorReset, result.Test, colorGray, elapsed, colorReset, slowIndicator, packageInfo)
 		}
 
 		// Show error output for failed tests
@@ -440,16 +452,37 @@ func formatDuration(seconds float64) string {
 	return fmt.Sprintf("%.3fs", seconds)
 }
 
+// getShortPackageName extracts the last part of a package path
+func getShortPackageName(fullPackage string) string {
+	parts := strings.Split(fullPackage, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return fullPackage
+}
+
+// shouldShowPackageName determines if package name should be shown in real-time display
+func shouldShowPackageName(packages map[string]*PackageState) bool {
+	// Count packages that have actual tests (not just package failures)
+	packageCount := 0
+	for _, pkg := range packages {
+		if pkg.Total > 0 {
+			packageCount++
+		}
+	}
+	return packageCount > 1
+}
+
 // showSlowTestsSummary displays a summary of slow tests
 func (d *TerminalDisplay) showSlowTestsSummary(results map[string]*TestResult) {
-	// Collect slow tests
+	// Collect slow tests grouped by package
 	type slowTest struct {
 		name     string
 		elapsed  float64
 		location string
 	}
 
-	var slowTests []slowTest
+	slowTestsByPackage := make(map[string][]slowTest)
 	for _, result := range results {
 		if result.HasSubtest || result.Test == "[PACKAGE]" {
 			continue
@@ -457,40 +490,46 @@ func (d *TerminalDisplay) showSlowTestsSummary(results map[string]*TestResult) {
 
 		testDuration := time.Duration(result.Elapsed * float64(time.Second))
 		if testDuration > d.config.Threshold {
-			slowTests = append(slowTests, slowTest{
+			test := slowTest{
 				name:     result.Test,
 				elapsed:  result.Elapsed,
 				location: result.Location,
-			})
+			}
+			slowTestsByPackage[result.Package] = append(slowTestsByPackage[result.Package], test)
 		}
 	}
 
-	if len(slowTests) == 0 {
+	if len(slowTestsByPackage) == 0 {
 		return
 	}
 
-	// Sort by elapsed time (slowest first)
-	for i := 0; i < len(slowTests)-1; i++ {
-		for j := i + 1; j < len(slowTests); j++ {
-			if slowTests[j].elapsed > slowTests[i].elapsed {
-				slowTests[i], slowTests[j] = slowTests[j], slowTests[i]
-			}
-		}
-	}
-
-	// Display slow tests summary
+	// Display slow tests summary grouped by package
 	fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
 	fmt.Fprintf(d.writer, "🐢 Slow Tests (>%s)\n", d.config.Threshold)
 	fmt.Fprintln(d.writer, strings.Repeat("=", 50))
 
-	for _, test := range slowTests {
-		elapsed := formatDuration(test.elapsed)
-		if test.location != "" {
-			fmt.Fprintf(d.writer, "  %s %s[%s]%s %s(%s)%s\n",
-				test.name, colorBlue, test.location, colorReset, colorRed, elapsed, colorReset)
-		} else {
-			fmt.Fprintf(d.writer, "  %s %s(%s)%s\n",
-				test.name, colorRed, elapsed, colorReset)
+	for pkgName, tests := range slowTestsByPackage {
+		// Sort tests by elapsed time (slowest first)
+		for i := 0; i < len(tests)-1; i++ {
+			for j := i + 1; j < len(tests); j++ {
+				if tests[j].elapsed > tests[i].elapsed {
+					tests[i], tests[j] = tests[j], tests[i]
+				}
+			}
+		}
+
+		shortPkg := getShortPackageName(pkgName)
+		fmt.Fprintf(d.writer, "\n=== %s%s%s ===\n", colorBlue, shortPkg, colorReset)
+
+		for _, test := range tests {
+			elapsed := formatDuration(test.elapsed)
+			if test.location != "" {
+				fmt.Fprintf(d.writer, "  %s %s[%s]%s %s(%s)%s\n",
+					test.name, colorBlue, test.location, colorReset, colorRed, elapsed, colorReset)
+			} else {
+				fmt.Fprintf(d.writer, "  %s %s(%s)%s\n",
+					test.name, colorRed, elapsed, colorReset)
+			}
 		}
 	}
 }
