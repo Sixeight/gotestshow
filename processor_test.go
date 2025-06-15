@@ -397,9 +397,10 @@ func TestShouldDisplayPackageFailure(t *testing.T) {
 		{
 			name: "individual test failure",
 			pkg: &PackageState{
-				Total:  1,
-				Failed: 1,
-				Output: []string{"=== RUN TestExample", "--- FAIL: TestExample"},
+				Total:                1,
+				Failed:               1,
+				IndividualTestFailed: 1,
+				Output:               []string{"=== RUN TestExample", "--- FAIL: TestExample"},
 			},
 			expected: false,
 		},

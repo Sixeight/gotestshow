@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -67,6 +68,7 @@ func (r *Runner) Run() int {
 	scanner := bufio.NewScanner(r.input)
 	jsonErrorCount := 0
 	totalLines := 0
+	validJSONFound := false
 
 	for scanner.Scan() {
 		totalLines++
@@ -76,8 +78,8 @@ func (r *Runner) Run() int {
 		if err := json.Unmarshal(line, &event); err != nil {
 			jsonErrorCount++
 
-			// If first line is not JSON, it's likely not JSON input at all
-			if totalLines == 1 && len(line) > 0 {
+			// If first line is not JSON and it's not empty and doesn't look like JSON, it's likely not JSON input at all
+			if totalLines == 1 && len(line) > 0 && !validJSONFound && !bytes.Contains(line, []byte("{")) {
 				// Stop progress display
 				cancel()
 				time.Sleep(50 * time.Millisecond)
@@ -90,8 +92,11 @@ func (r *Runner) Run() int {
 				r.display.ShowHelp()
 				return 1
 			}
+			// Skip invalid JSON lines and continue processing
 			continue
 		}
+
+		validJSONFound = true
 
 		r.processor.ProcessEvent(event)
 

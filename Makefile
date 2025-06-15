@@ -20,11 +20,11 @@ fmt: ## Format code using gofmt
 
 .PHONY: test
 test: ## Run tests
-	go test -v ./...
+	go test -v -race .
 
 .PHONY: test-cover
 test-cover: ## Run tests with coverage
-	go test -v -coverprofile=coverage.out ./...
+	go test -v -coverprofile=coverage.out .
 	go tool cover -html=coverage.out -o coverage.html
 
 .PHONY: build
@@ -41,3 +41,8 @@ mod-tidy: ## Tidy go modules
 
 .PHONY: all
 all: fmt lint test build ## Run all checks and build
+
+.PHONY: check
+check: # Check operation
+	go test -json ./example/... | go run .
+

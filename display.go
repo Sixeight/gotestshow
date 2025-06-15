@@ -298,6 +298,7 @@ func (d *TerminalDisplay) ShowHelp() {
 	fmt.Fprintln(d.writer, "Description:")
 	fmt.Fprintln(d.writer, "  gotestshow reads JSON-formatted test output from stdin and displays")
 	fmt.Fprintln(d.writer, "  it in a human-readable format with real-time progress updates.")
+	fmt.Fprintln(d.writer, "  Real-time progress display shows only failed test details.")
 	fmt.Fprintln(d.writer)
 	fmt.Fprintln(d.writer, "Examples:")
 	fmt.Fprintln(d.writer, "  # Test all packages")
