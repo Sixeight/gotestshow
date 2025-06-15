@@ -78,6 +78,11 @@ func (d *TerminalDisplay) ShowProgress(packages map[string]*PackageState, hasTes
 	// Update packages for use in ShowTestResult
 	d.packages = packages
 
+	// In CI mode, don't show progress updates
+	if d.config != nil && d.config.CIMode {
+		return
+	}
+
 	animation := NewAnimation()
 	spinner := animation.GetSpinner()
 	elapsed := time.Since(startTime)
@@ -117,6 +122,37 @@ func (d *TerminalDisplay) ShowProgress(packages map[string]*PackageState, hasTes
 
 // ShowTestResult displays the result of a single test
 func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
+	// In CI mode, only show failed tests with simple format (no escape sequences)
+	if d.config != nil && d.config.CIMode {
+		// Only show failures
+		if success {
+			return
+		}
+
+		// Don't display if parent test with subtests fails (only display subtest failures)
+		if result.HasSubtest {
+			return
+		}
+
+		// Simple format without colors or escape sequences
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)\n", result.Test, result.Location, result.Elapsed)
+		} else {
+			fmt.Fprintf(d.writer, "FAIL %s (%.2fs)\n", result.Test, result.Elapsed)
+		}
+
+		// Display error output
+		relevantOutput := extractRelevantOutput(result.Output)
+		if len(relevantOutput) > 0 {
+			fmt.Fprintf(d.writer, "\n")
+			for _, line := range relevantOutput {
+				fmt.Fprintf(d.writer, "        %s", line)
+			}
+			fmt.Fprintf(d.writer, "\n")
+		}
+		return
+	}
+
 	// In timing mode, show all test results with execution time
 	if d.config != nil && d.config.TimingMode {
 		// Don't display if parent test with subtests fails (only display subtest failures)
@@ -223,6 +259,22 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 
 // ShowPackageFailure displays package-level failures
 func (d *TerminalDisplay) ShowPackageFailure(packageName string, output []string) {
+	// In CI mode, simple format without colors or escape sequences
+	if d.config != nil && d.config.CIMode {
+		fmt.Fprintf(d.writer, "PACKAGE FAIL %s\n", packageName)
+
+		// Display error output
+		relevantOutput := extractRelevantOutput(output)
+		if len(relevantOutput) > 0 {
+			fmt.Fprintf(d.writer, "\n")
+			for _, line := range relevantOutput {
+				fmt.Fprintf(d.writer, "        %s", line)
+			}
+			fmt.Fprintf(d.writer, "\n")
+		}
+		return
+	}
+
 	// In case of package failure, clear the current line and display on a new line
 	d.ClearLine()
 	fmt.Fprintf(d.writer, "%s✗ PACKAGE FAIL%s %s\n", colorRed, colorReset, packageName)
@@ -242,6 +294,39 @@ func (d *TerminalDisplay) ShowPackageFailure(packageName string, output []string
 func (d *TerminalDisplay) ShowFinalResults(packages map[string]*PackageState, results map[string]*TestResult, startTime time.Time) int {
 	stats := collectSummaryStats(packages, results)
 	exitCode := 0
+
+	// In CI mode, show simple summary without colors or decorations
+	if d.config != nil && d.config.CIMode {
+		actualElapsed := time.Since(startTime)
+		
+		// Show failure summary if there are any failures (without colors/decorations)
+		if stats.hasFailures {
+			fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
+			fmt.Fprintln(d.writer, "Failed Tests Summary")
+			fmt.Fprintln(d.writer, strings.Repeat("=", 50))
+
+			for pkgName, pkg := range packages {
+				if code := d.displayPackageSummaryCI(pkgName, pkg, results); code != 0 {
+					exitCode = code
+				}
+			}
+
+			fmt.Fprintln(d.writer, "\n"+strings.Repeat("-", 50))
+		}
+		
+		// Simple summary
+		fmt.Fprintf(d.writer, "\nTotal: %d tests | Passed: %d | Failed: %d | Skipped: %d | Time: %.2fs\n",
+			stats.totalTests, stats.totalPassed, stats.totalFailed, stats.totalSkipped, actualElapsed.Seconds())
+
+		// Final status message
+		if stats.totalFailed > 0 {
+			fmt.Fprintf(d.writer, "\nTests failed!\n")
+			return 1
+		} else {
+			fmt.Fprintf(d.writer, "\nAll tests passed!\n")
+			return 0
+		}
+	}
 
 	// In timing mode, show slow tests summary
 	if d.config != nil && d.config.TimingMode {
@@ -293,6 +378,7 @@ func (d *TerminalDisplay) ShowHelp() {
 	fmt.Fprintln(d.writer, "  -timing         Enable timing mode to show only slow tests and failures")
 	fmt.Fprintln(d.writer, "  -threshold      Threshold for slow tests (default: 500ms)")
 	fmt.Fprintln(d.writer, "                  Examples: 1s, 500ms, 1.5s")
+	fmt.Fprintln(d.writer, "  -ci             Enable CI mode - no escape sequences, only show failures and summary")
 	fmt.Fprintln(d.writer, "  -help           Show this help message")
 	fmt.Fprintln(d.writer)
 	fmt.Fprintln(d.writer, "Description:")
@@ -316,6 +402,10 @@ func (d *TerminalDisplay) ShowHelp() {
 
 // ClearLine clears the current line
 func (d *TerminalDisplay) ClearLine() {
+	// In CI mode, don't use escape sequences
+	if d.config != nil && d.config.CIMode {
+		return
+	}
 	fmt.Fprint(d.writer, "\r\033[K")
 	d.lastDisplayLength = 0
 }
@@ -396,6 +486,70 @@ func (d *TerminalDisplay) displayFailedTestsFor(pkgName string, pkg *PackageStat
 			} else {
 				fmt.Fprintf(d.writer, "    %s✗ %s%s %s(%.2fs)%s\n",
 					colorRed, result.Test, colorReset, colorGray, result.Elapsed, colorReset)
+			}
+		}
+	}
+}
+
+func (d *TerminalDisplay) displayPackageSummaryCI(pkgName string, pkg *PackageState, results map[string]*TestResult) int {
+	// Check if there is a Package Fail
+	hasPackageFail := false
+	if packageResult, exists := results[fmt.Sprintf("%s/[PACKAGE]", pkgName)]; exists {
+		if packageResult.Failed && shouldDisplayPackageFailure(pkg) {
+			hasPackageFail = true
+		}
+	}
+
+	// Skip if there are 0 tests and no Package Fail
+	if pkg.Total == 0 && !hasPackageFail {
+		return 0
+	}
+
+	// Display only if there are failures or Package Fail
+	if pkg.Failed == 0 && !hasPackageFail {
+		return 0
+	}
+
+	status := "PASS"
+	exitCode := 0
+	if pkg.Failed > 0 || hasPackageFail {
+		if hasPackageFail && pkg.Failed == 0 {
+			status = "PACKAGE FAIL"
+		} else {
+			status = "FAIL"
+		}
+		exitCode = 1
+	}
+
+	fmt.Fprintf(d.writer, "\n%s %s (%.2fs)\n", status, pkgName, pkg.Elapsed)
+
+	// Don't display details when only Package Fail
+	if hasPackageFail && pkg.Failed == 0 {
+		return exitCode
+	}
+
+	// Display test statistics
+	fmt.Fprintf(d.writer, "  Tests: %d | Passed: %d | Failed: %d | Skipped: %d\n",
+		pkg.Total, pkg.Passed, pkg.Failed, pkg.Skipped)
+
+	// Display individual test failures
+	if pkg.Failed > 0 {
+		fmt.Fprintf(d.writer, "\n")
+		d.displayFailedTestsForCI(pkgName, pkg, results)
+	}
+
+	return exitCode
+}
+
+func (d *TerminalDisplay) displayFailedTestsForCI(pkgName string, pkg *PackageState, results map[string]*TestResult) {
+	for _, result := range results {
+		if result.Package == pkgName && result.Failed && result.Test != "[PACKAGE]" && !result.HasSubtest {
+			if result.Location != "" {
+				fmt.Fprintf(d.writer, "    FAIL %s [%s] (%.2fs)\n",
+					result.Test, result.Location, result.Elapsed)
+			} else {
+				fmt.Fprintf(d.writer, "    FAIL %s (%.2fs)\n",
+					result.Test, result.Elapsed)
 			}
 		}
 	}

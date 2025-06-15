@@ -20,6 +20,12 @@ A CLI tool that displays `go test -json` output in a real-time, human-friendly f
   - Execution time and error messages
 - **Skipped tests**: Update counter only
 
+### 🔧 Multiple Display Modes
+
+- **Normal Mode**: Real-time animated progress with colors
+- **Timing Mode**: Show only slow tests and failures with execution times
+- **CI Mode**: Clean output without escape sequences for CI/CD pipelines
+
 ## Installation
 
 ```bash
@@ -40,7 +46,47 @@ go test -json ./... | gotestshow
 go test -json ./pkg/... | gotestshow
 ```
 
+### Timing Mode
+
+Show only slow tests and failures with execution times:
+
+```bash
+go test -json ./... | gotestshow -timing
+```
+
+Customize the threshold for slow tests:
+
+```bash
+go test -json ./... | gotestshow -timing -threshold=1s
+```
+
+### CI Mode
+
+For CI/CD pipelines - clean output without escape sequences, colors, or animations:
+
+```bash
+go test -json ./... | gotestshow -ci
+```
+
+CI mode features:
+- No ANSI escape sequences (safe for log files)
+- No real-time progress updates
+- Only shows failed tests during execution
+- Includes detailed failure summary at the end
+- Simple, parseable output format
+
+## Command Line Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-help` | Show help message | - |
+| `-timing` | Enable timing mode to show only slow tests and failures | `false` |
+| `-threshold` | Threshold for slow tests (e.g., 1s, 500ms, 1.5s) | `500ms` |
+| `-ci` | Enable CI mode - no escape sequences, only show failures and summary | `false` |
+
 ## Example Output
+
+### Normal Mode
 
 ```
 ⠸ Running: 3 | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.2s
@@ -51,7 +97,7 @@ go test -json ./pkg/... | gotestshow
         
 
 ==================================================
-📊 Test Results Summary
+📊 Failed Tests Summary
 ==================================================
 
 ✗ FAIL github.com/example/math (1.23s)
@@ -66,6 +112,36 @@ Total: 15 tests | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.24s
 ❌ Tests failed!
 ```
 
+### CI Mode
+
+```
+FAIL TestMultiply [math_test.go:47] (0.40s)
+
+            math_test.go:47: Multiply(4, 5) = 9, want 20
+        --- FAIL: TestMultiply (0.40s)
+
+FAIL TestDivide/divide_by_zero [math_test.go:68] (0.30s)
+
+            math_test.go:68: expected error for divide by zero, got nil
+        --- FAIL: TestDivide/divide_by_zero (0.30s)
+
+==================================================
+Failed Tests Summary
+==================================================
+
+FAIL github.com/Sixeight/gotestshow/example (5.68s)
+  Tests: 17 | Passed: 10 | Failed: 3 | Skipped: 1
+
+    FAIL TestMultiply [math_test.go:47] (0.40s)
+    FAIL TestDivide/divide_by_zero [math_test.go:68] (0.30s)
+
+--------------------------------------------------
+
+Total: 17 tests | Passed: 10 | Failed: 3 | Skipped: 1 | Time: 5.93s
+
+Tests failed!
+```
+
 ## Why Use gotestshow?
 
 Standard `go test` output can be difficult to read, especially with large test suites or in CI environments. gotestshow:
@@ -73,7 +149,11 @@ Standard `go test` output can be difficult to read, especially with large test s
 1. **Reduces noise**: Hides details of passing tests to focus on failures
 2. **Immediate feedback**: Failed tests are displayed instantly
 3. **Visual progress**: Current state is clear at a glance, even with large test suites
-4. **CI/CD friendly**: Reads from stdin, making it easy to integrate into existing workflows
+4. **Multiple modes**: 
+   - **Normal**: Real-time progress with colors and animations
+   - **Timing**: Focus on slow tests and performance analysis
+   - **CI**: Clean output perfect for CI/CD pipelines
+5. **CI/CD friendly**: Reads from stdin, making it easy to integrate into existing workflows
 
 ## Related Projects
 
@@ -87,14 +167,30 @@ Standard `go test` output can be difficult to read, especially with large test s
 ### Build
 
 ```bash
-go build -o gotestshow main.go
+make build
+# or
+go build -o gotestshow .
 ```
 
-### Example Test Run
+### Run Tests
 
 ```bash
-# Run tests in the example directory
-go test -json ./example/... | ./gotestshow
+make test
+# or
+go test -v -race .
+```
+
+### Example Test Runs
+
+```bash
+# Normal mode with example tests
+go test -json ./example | ./gotestshow
+
+# CI mode
+go test -json ./example | ./gotestshow -ci
+
+# Timing mode
+go test -json ./example | ./gotestshow -timing -threshold=500ms
 ```
 
 ## License

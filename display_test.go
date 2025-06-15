@@ -409,3 +409,189 @@ func TestCollectSummaryStats(t *testing.T) {
 		t.Error("Expected hasFailures to be true")
 	}
 }
+
+func TestTerminalDisplay_CIMode_ShowProgress(t *testing.T) {
+	var buf bytes.Buffer
+	display := NewTerminalDisplay(&buf, true)
+	config := &Config{CIMode: true}
+	display.SetConfig(config)
+
+	packages := map[string]*PackageState{
+		"example": {
+			Name:    "example",
+			Total:   3,
+			Passed:  2,
+			Failed:  1,
+			Running: 0,
+		},
+	}
+
+	startTime := time.Now().Add(-2 * time.Second)
+	display.ShowProgress(packages, true, startTime)
+
+	// In CI mode, ShowProgress should produce no output
+	output := buf.String()
+	if output != "" {
+		t.Error("CI mode should not show progress updates")
+	}
+}
+
+func TestTerminalDisplay_CIMode_ShowTestResult_Success(t *testing.T) {
+	var buf bytes.Buffer
+	display := NewTerminalDisplay(&buf, true)
+	config := &Config{CIMode: true}
+	display.SetConfig(config)
+
+	result := &TestResult{
+		Package: "example",
+		Test:    "TestExample",
+		Passed:  true,
+		Elapsed: 0.1,
+	}
+
+	display.ShowTestResult(result, true)
+
+	// In CI mode, success tests should not produce output
+	output := buf.String()
+	if output != "" {
+		t.Error("CI mode should not show successful tests")
+	}
+}
+
+func TestTerminalDisplay_CIMode_ShowTestResult_Failure(t *testing.T) {
+	var buf bytes.Buffer
+	display := NewTerminalDisplay(&buf, true)
+	config := &Config{CIMode: true}
+	display.SetConfig(config)
+
+	result := &TestResult{
+		Package:  "example",
+		Test:     "TestExample",
+		Failed:   true,
+		Elapsed:  0.2,
+		Location: "example_test.go:15",
+		Output:   []string{"    Error: assertion failed\n"},
+	}
+
+	display.ShowTestResult(result, false)
+
+	output := buf.String()
+	
+	// Should contain FAIL but without color codes
+	if !strings.Contains(output, "FAIL TestExample") {
+		t.Error("CI mode should show FAIL for failed tests")
+	}
+
+	// Should not contain ANSI color codes
+	if strings.Contains(output, "\033[") {
+		t.Error("CI mode should not contain ANSI escape sequences")
+	}
+
+	if !strings.Contains(output, "example_test.go:15") {
+		t.Error("CI mode should show location")
+	}
+
+	if !strings.Contains(output, "0.2") {
+		t.Error("CI mode should show elapsed time")
+	}
+
+	if !strings.Contains(output, "Error: assertion failed") {
+		t.Error("CI mode should show error output")
+	}
+}
+
+func TestTerminalDisplay_CIMode_ShowPackageFailure(t *testing.T) {
+	var buf bytes.Buffer
+	display := NewTerminalDisplay(&buf, true)
+	config := &Config{CIMode: true}
+	display.SetConfig(config)
+
+	output := []string{
+		"# example [build failed]\n",
+		"syntax error: unexpected token\n",
+	}
+
+	display.ShowPackageFailure("example", output)
+
+	result := buf.String()
+	
+	// Should contain PACKAGE FAIL but without color codes
+	if !strings.Contains(result, "PACKAGE FAIL example") {
+		t.Error("CI mode should show PACKAGE FAIL")
+	}
+
+	// Should not contain ANSI color codes
+	if strings.Contains(result, "\033[") {
+		t.Error("CI mode should not contain ANSI escape sequences")
+	}
+
+	if !strings.Contains(result, "syntax error") {
+		t.Error("CI mode should show error output")
+	}
+}
+
+func TestTerminalDisplay_CIMode_ShowFinalResults(t *testing.T) {
+	var buf bytes.Buffer
+	display := NewTerminalDisplay(&buf, true)
+	config := &Config{CIMode: true}
+	display.SetConfig(config)
+
+	packages := map[string]*PackageState{
+		"example": {
+			Name:   "example",
+			Total:  3,
+			Passed: 2,
+			Failed: 1,
+		},
+	}
+
+	results := map[string]*TestResult{
+		"example/TestExample": {
+			Package: "example",
+			Test:    "TestExample",
+			Failed:  true,
+			Elapsed: 0.2,
+		},
+	}
+	startTime := time.Now().Add(-2 * time.Second)
+
+	exitCode := display.ShowFinalResults(packages, results, startTime)
+
+	if exitCode != 1 {
+		t.Errorf("Expected exit code 1 for failed tests, got %d", exitCode)
+	}
+
+	output := buf.String()
+	
+	// Should show simple summary without colors
+	if !strings.Contains(output, "Total: 3 tests") {
+		t.Error("CI mode should show total test count")
+	}
+
+	if !strings.Contains(output, "Passed: 2") {
+		t.Error("CI mode should show passed count")
+	}
+
+	if !strings.Contains(output, "Failed: 1") {
+		t.Error("CI mode should show failed count")
+	}
+
+	if !strings.Contains(output, "Tests failed!") {
+		t.Error("CI mode should show failure message")
+	}
+
+	// Should not contain ANSI color codes
+	if strings.Contains(output, "\033[") {
+		t.Error("CI mode should not contain ANSI escape sequences")
+	}
+
+	// Should contain failure summary in CI mode
+	if !strings.Contains(output, "Failed Tests Summary") {
+		t.Error("CI mode should show failure summary")
+	}
+
+	// Should not contain emojis or decorative elements
+	if strings.Contains(output, "✓") || strings.Contains(output, "✗") || strings.Contains(output, "❌") {
+		t.Error("CI mode should not contain decorative characters")
+	}
+}

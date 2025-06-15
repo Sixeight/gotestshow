@@ -69,12 +69,14 @@ type summaryStats struct {
 type Config struct {
 	TimingMode bool
 	Threshold  time.Duration
+	CIMode     bool
 }
 
 func main() {
 	help := flag.Bool("help", false, "Show help message")
 	timing := flag.Bool("timing", false, "Enable timing mode to show only slow tests and failures")
 	threshold := flag.String("threshold", "500ms", "Threshold for slow tests (e.g., 1s, 500ms)")
+	ci := flag.Bool("ci", false, "Enable CI mode - no escape sequences, only show failures and summary")
 	flag.Parse()
 
 	// Parse threshold duration
@@ -87,6 +89,7 @@ func main() {
 	config := &Config{
 		TimingMode: *timing,
 		Threshold:  thresholdDuration,
+		CIMode:     *ci,
 	}
 
 	display := NewTerminalDisplay(os.Stdout, true)

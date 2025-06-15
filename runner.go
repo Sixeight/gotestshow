@@ -44,19 +44,22 @@ func (r *Runner) SetConfig(config *Config) {
 func (r *Runner) Run() int {
 	startTime := time.Now()
 
-	// Hide cursor
-	fmt.Fprint(r.output, "\033[?25l")
-	// Ensure cursor is restored when function exits
-	defer fmt.Fprint(r.output, "\033[?25h")
+	// In CI mode, don't use cursor control escape sequences
+	if r.config == nil || !r.config.CIMode {
+		// Hide cursor
+		fmt.Fprint(r.output, "\033[?25l")
+		// Ensure cursor is restored when function exits
+		defer fmt.Fprint(r.output, "\033[?25h")
 
-	// Setup signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		fmt.Fprint(r.output, "\033[?25h") // Show cursor
-		os.Exit(1)
-	}()
+		// Setup signal handling
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigChan
+			fmt.Fprint(r.output, "\033[?25h") // Show cursor
+			os.Exit(1)
+		}()
+	}
 
 	// Start progress display goroutine
 	ctx, cancel := context.WithCancel(context.Background())
