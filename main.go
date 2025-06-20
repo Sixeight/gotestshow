@@ -12,12 +12,13 @@ import (
 
 // TestEvent represents a single test event from go test -json
 type TestEvent struct {
-	Time    time.Time `json:"Time"`
-	Action  string    `json:"Action"`
-	Package string    `json:"Package"`
-	Test    string    `json:"Test"`
-	Elapsed float64   `json:"Elapsed"`
-	Output  string    `json:"Output"`
+	Time       time.Time `json:"Time"`
+	Action     string    `json:"Action"`
+	Package    string    `json:"Package"`
+	Test       string    `json:"Test"`
+	Elapsed    float64   `json:"Elapsed"`
+	Output     string    `json:"Output"`
+	ImportPath string    `json:"ImportPath"`
 }
 
 // TestResult holds the summary of a test

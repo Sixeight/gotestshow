@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -109,6 +110,17 @@ func (r *Runner) Run() int {
 			key := fmt.Sprintf("%s/%s", event.Package, event.Test)
 			if result, exists := results[key]; exists {
 				r.display.ShowTestResult(result, event.Action != "fail")
+			}
+		} else if event.Action == "build-fail" {
+			// Display build failures immediately
+			packageName := event.ImportPath
+			if idx := strings.Index(packageName, " ["); idx != -1 {
+				packageName = packageName[:idx]
+			}
+			results := r.processor.GetResults()
+			key := fmt.Sprintf("%s/[BUILD]", packageName)
+			if result, exists := results[key]; exists {
+				r.display.ShowTestResult(result, false) // Show as failure
 			}
 		} else if event.Package != "" && event.Action == "fail" {
 			// Display package failures immediately

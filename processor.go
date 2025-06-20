@@ -38,6 +38,12 @@ func (p *DefaultEventProcessor) ProcessEvent(event TestEvent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Handle build-output events with ImportPath
+	if event.Action == "build-output" || event.Action == "build-fail" {
+		p.processBuildEvent(event)
+		return
+	}
+
 	// Initialize package if needed
 	if _, exists := p.packages[event.Package]; !exists && event.Package != "" {
 		p.packages[event.Package] = &PackageState{Name: event.Package}
@@ -114,7 +120,7 @@ func (p *DefaultEventProcessor) processTestEvent(event TestEvent) {
 	case "output":
 		result.Output = append(result.Output, event.Output)
 		if result.Location == "" {
-			if location := extractFileLocation(event.Output); location != "" {
+			if location := extractFileLocationWithPackage(event.Output, event.Package); location != "" {
 				result.Location = location
 			}
 		}
@@ -167,6 +173,57 @@ func (p *DefaultEventProcessor) processPackageEvent(event TestEvent) {
 	}
 }
 
+func (p *DefaultEventProcessor) processBuildEvent(event TestEvent) {
+	// Extract package name from ImportPath
+	packageName := event.ImportPath
+	if packageName == "" {
+		return
+	}
+
+	// Remove the test binary suffix if present
+	if idx := strings.Index(packageName, " ["); idx != -1 {
+		packageName = packageName[:idx]
+	}
+
+	// Initialize package if needed
+	if _, exists := p.packages[packageName]; !exists {
+		p.packages[packageName] = &PackageState{Name: packageName}
+	}
+
+	pkg := p.packages[packageName]
+
+	switch event.Action {
+	case "build-output":
+		pkg.Output = append(pkg.Output, event.Output)
+
+		// Create a build error result if we haven't already
+		key := fmt.Sprintf("%s/[BUILD]", packageName)
+		if _, exists := p.results[key]; !exists {
+			p.results[key] = &TestResult{
+				Package: packageName,
+				Test:    "[BUILD]",
+				Failed:  true,
+				Output:  []string{},
+			}
+		}
+
+		result := p.results[key]
+		result.Output = append(result.Output, event.Output)
+
+		// Extract file location from build error
+		if result.Location == "" {
+			if location := extractFileLocationWithPackage(event.Output, packageName); location != "" {
+				result.Location = location
+			}
+		}
+
+	case "build-fail":
+		// Mark package as failed due to build issues
+		pkg.Failed++
+		pkg.Total++
+	}
+}
+
 func (p *DefaultEventProcessor) isParentWithSubtests(testName, packageName string) bool {
 	if strings.Contains(testName, "/") {
 		return false
@@ -185,13 +242,95 @@ func extractFileLocation(output string) string {
 	// Look for filename:line_number: pattern
 	parts := strings.SplitN(trimmed, ":", 3)
 	if len(parts) >= 2 {
-		// If filename ends with _test.go and next is a number
-		if strings.HasSuffix(parts[0], "_test.go") {
+		// Check for both test files and regular Go files (for build errors)
+		if strings.HasSuffix(parts[0], "_test.go") || strings.HasSuffix(parts[0], ".go") {
 			if _, err := fmt.Sscanf(parts[1], "%d", new(int)); err == nil {
 				return parts[0] + ":" + parts[1]
 			}
 		}
 	}
+	return ""
+}
+
+// extractFileLocationWithPackage extracts file:line information with package context
+func extractFileLocationWithPackage(output, packageName string) string {
+	trimmed := strings.TrimSpace(output)
+	// Look for filename:line_number: pattern
+	parts := strings.SplitN(trimmed, ":", 3)
+	if len(parts) >= 2 {
+		fileName := parts[0]
+		lineNum := parts[1]
+
+		// Validate line number
+		if _, err := fmt.Sscanf(lineNum, "%d", new(int)); err != nil {
+			return ""
+		}
+
+		// Check for both test files and regular Go files (for build errors)
+		if strings.HasSuffix(fileName, "_test.go") || strings.HasSuffix(fileName, ".go") {
+			// If fileName already contains path separators, it's likely a relative path
+			if strings.Contains(fileName, "/") {
+				return fileName + ":" + lineNum
+			}
+
+			// If we have package information, try to create a meaningful relative path
+			if packageName != "" {
+				// Extract relative package path from full package name
+				// e.g., "github.com/Sixeight/gotestshow/example" -> "example"
+				// e.g., "github.com/Sixeight/gotestshow/example/broken" -> "example/broken"
+				relativePackagePath := getRelativePackagePath(packageName)
+				if relativePackagePath != "" {
+					return relativePackagePath + "/" + fileName + ":" + lineNum
+				}
+			}
+
+			// Fallback to just filename:line
+			return fileName + ":" + lineNum
+		}
+	}
+	return ""
+}
+
+// getRelativePackagePath extracts a relative package path from a full package name
+func getRelativePackagePath(fullPackageName string) string {
+	// Try to find a meaningful relative path by looking for common patterns
+	// This is a heuristic-based approach
+
+	// Split by "/" and try to find where the meaningful path starts
+	parts := strings.Split(fullPackageName, "/")
+	if len(parts) <= 1 {
+		return ""
+	}
+
+	// Look for common repository patterns
+	for i, part := range parts {
+		// If we find "github.com", "gitlab.com", etc., skip the first 3 parts (domain/user/repo)
+		if part == "github.com" || part == "gitlab.com" || part == "bitbucket.org" {
+			if i+3 < len(parts) {
+				return strings.Join(parts[i+3:], "/")
+			}
+			break
+		}
+		// If we find a part that looks like a module name, take everything after it
+		if strings.Contains(part, ".") && (strings.Contains(part, "com") || strings.Contains(part, "org") || strings.Contains(part, "net")) {
+			if i+1 < len(parts) {
+				return strings.Join(parts[i+1:], "/")
+			}
+			break
+		}
+	}
+
+	// Fallback: if we can't find a good pattern, just take the last meaningful parts
+	if len(parts) >= 2 {
+		// For simple cases, take the last 1-2 parts
+		if len(parts) == 2 {
+			return parts[1]
+		} else {
+			// Take the last 2 parts if available
+			return strings.Join(parts[len(parts)-2:], "/")
+		}
+	}
+
 	return ""
 }
 

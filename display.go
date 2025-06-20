@@ -134,11 +134,21 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 			return
 		}
 
-		// Simple format without colors or escape sequences
-		if result.Location != "" {
-			fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)\n", result.Test, result.Location, result.Elapsed)
+		// Handle build errors differently in CI mode
+		if result.Test == "[BUILD]" {
+			shortPkg := getShortPackageName(result.Package)
+			if result.Location != "" {
+				fmt.Fprintf(d.writer, "BUILD FAIL %s [%s]\n", shortPkg, result.Location)
+			} else {
+				fmt.Fprintf(d.writer, "BUILD FAIL %s\n", shortPkg)
+			}
 		} else {
-			fmt.Fprintf(d.writer, "FAIL %s (%.2fs)\n", result.Test, result.Elapsed)
+			// Simple format without colors or escape sequences
+			if result.Location != "" {
+				fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)\n", result.Test, result.Location, result.Elapsed)
+			} else {
+				fmt.Fprintf(d.writer, "FAIL %s (%.2fs)\n", result.Test, result.Elapsed)
+			}
 		}
 
 		// Display error output
@@ -237,13 +247,25 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 		return
 	}
 
-	// Display test name and location information
-	if result.Location != "" {
-		fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s[%s]%s %s(%.2fs)%s\n",
-			colorRed, colorReset, result.Test, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+	// Handle build errors differently
+	if result.Test == "[BUILD]" {
+		shortPkg := getShortPackageName(result.Package)
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "%s✗ BUILD FAIL%s %s %s[%s]%s\n",
+				colorRed, colorReset, shortPkg, colorBlue, result.Location, colorReset)
+		} else {
+			fmt.Fprintf(d.writer, "%s✗ BUILD FAIL%s %s\n",
+				colorRed, colorReset, shortPkg)
+		}
 	} else {
-		fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s(%.2fs)%s\n",
-			colorRed, colorReset, result.Test, colorGray, result.Elapsed, colorReset)
+		// Display test name and location information
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s[%s]%s %s(%.2fs)%s\n",
+				colorRed, colorReset, result.Test, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+		} else {
+			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s(%.2fs)%s\n",
+				colorRed, colorReset, result.Test, colorGray, result.Elapsed, colorReset)
+		}
 	}
 
 	// Display error output (display all related output)
@@ -277,7 +299,8 @@ func (d *TerminalDisplay) ShowPackageFailure(packageName string, output []string
 
 	// In case of package failure, clear the current line and display on a new line
 	d.ClearLine()
-	fmt.Fprintf(d.writer, "%s✗ PACKAGE FAIL%s %s\n", colorRed, colorReset, packageName)
+	shortPkg := getShortPackageName(packageName)
+	fmt.Fprintf(d.writer, "%s✗ PACKAGE FAIL%s %s\n", colorRed, colorReset, shortPkg)
 
 	// Display error output (display all related output)
 	relevantOutput := extractRelevantOutput(output)
@@ -298,7 +321,7 @@ func (d *TerminalDisplay) ShowFinalResults(packages map[string]*PackageState, re
 	// In CI mode, show simple summary without colors or decorations
 	if d.config != nil && d.config.CIMode {
 		actualElapsed := time.Since(startTime)
-		
+
 		// Show failure summary if there are any failures (without colors/decorations)
 		if stats.hasFailures {
 			fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
@@ -313,7 +336,7 @@ func (d *TerminalDisplay) ShowFinalResults(packages map[string]*PackageState, re
 
 			fmt.Fprintln(d.writer, "\n"+strings.Repeat("-", 50))
 		}
-		
+
 		// Simple summary
 		fmt.Fprintf(d.writer, "\nTotal: %d tests | Passed: %d | Failed: %d | Skipped: %d | Time: %.2fs\n",
 			stats.totalTests, stats.totalPassed, stats.totalFailed, stats.totalSkipped, actualElapsed.Seconds())
@@ -457,7 +480,8 @@ func (d *TerminalDisplay) displayPackageSummary(pkgName string, pkg *PackageStat
 		exitCode = 1
 	}
 
-	fmt.Fprintf(d.writer, "\n%s %s %s(%.2fs)%s\n", status, pkgName, colorGray, pkg.Elapsed, colorReset)
+	shortPkg := getShortPackageName(pkgName)
+	fmt.Fprintf(d.writer, "\n%s %s %s(%.2fs)%s\n", status, shortPkg, colorGray, pkg.Elapsed, colorReset)
 
 	// Don't display details when only Package Fail
 	if hasPackageFail && pkg.Failed == 0 {
@@ -480,12 +504,22 @@ func (d *TerminalDisplay) displayPackageSummary(pkgName string, pkg *PackageStat
 func (d *TerminalDisplay) displayFailedTestsFor(pkgName string, pkg *PackageState, results map[string]*TestResult) {
 	for _, result := range results {
 		if result.Package == pkgName && result.Failed && result.Test != "[PACKAGE]" && !result.HasSubtest {
-			if result.Location != "" {
-				fmt.Fprintf(d.writer, "    %s✗ %s%s %s[%s]%s %s(%.2fs)%s\n",
-					colorRed, result.Test, colorReset, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+			if result.Test == "[BUILD]" {
+				if result.Location != "" {
+					fmt.Fprintf(d.writer, "    %s✗ BUILD FAIL%s %s[%s]%s\n",
+						colorRed, colorReset, colorBlue, result.Location, colorReset)
+				} else {
+					fmt.Fprintf(d.writer, "    %s✗ BUILD FAIL%s\n",
+						colorRed, colorReset)
+				}
 			} else {
-				fmt.Fprintf(d.writer, "    %s✗ %s%s %s(%.2fs)%s\n",
-					colorRed, result.Test, colorReset, colorGray, result.Elapsed, colorReset)
+				if result.Location != "" {
+					fmt.Fprintf(d.writer, "    %s✗ %s%s %s[%s]%s %s(%.2fs)%s\n",
+						colorRed, result.Test, colorReset, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+				} else {
+					fmt.Fprintf(d.writer, "    %s✗ %s%s %s(%.2fs)%s\n",
+						colorRed, result.Test, colorReset, colorGray, result.Elapsed, colorReset)
+				}
 			}
 		}
 	}
@@ -521,7 +555,8 @@ func (d *TerminalDisplay) displayPackageSummaryCI(pkgName string, pkg *PackageSt
 		exitCode = 1
 	}
 
-	fmt.Fprintf(d.writer, "\n%s %s (%.2fs)\n", status, pkgName, pkg.Elapsed)
+	shortPkg := getShortPackageName(pkgName)
+	fmt.Fprintf(d.writer, "\n%s %s (%.2fs)\n", status, shortPkg, pkg.Elapsed)
 
 	// Don't display details when only Package Fail
 	if hasPackageFail && pkg.Failed == 0 {
@@ -544,12 +579,20 @@ func (d *TerminalDisplay) displayPackageSummaryCI(pkgName string, pkg *PackageSt
 func (d *TerminalDisplay) displayFailedTestsForCI(pkgName string, pkg *PackageState, results map[string]*TestResult) {
 	for _, result := range results {
 		if result.Package == pkgName && result.Failed && result.Test != "[PACKAGE]" && !result.HasSubtest {
-			if result.Location != "" {
-				fmt.Fprintf(d.writer, "    FAIL %s [%s] (%.2fs)\n",
-					result.Test, result.Location, result.Elapsed)
+			if result.Test == "[BUILD]" {
+				if result.Location != "" {
+					fmt.Fprintf(d.writer, "    BUILD FAIL [%s]\n", result.Location)
+				} else {
+					fmt.Fprintf(d.writer, "    BUILD FAIL\n")
+				}
 			} else {
-				fmt.Fprintf(d.writer, "    FAIL %s (%.2fs)\n",
-					result.Test, result.Elapsed)
+				if result.Location != "" {
+					fmt.Fprintf(d.writer, "    FAIL %s [%s] (%.2fs)\n",
+						result.Test, result.Location, result.Elapsed)
+				} else {
+					fmt.Fprintf(d.writer, "    FAIL %s (%.2fs)\n",
+						result.Test, result.Elapsed)
+				}
 			}
 		}
 	}

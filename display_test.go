@@ -476,7 +476,7 @@ func TestTerminalDisplay_CIMode_ShowTestResult_Failure(t *testing.T) {
 	display.ShowTestResult(result, false)
 
 	output := buf.String()
-	
+
 	// Should contain FAIL but without color codes
 	if !strings.Contains(output, "FAIL TestExample") {
 		t.Error("CI mode should show FAIL for failed tests")
@@ -514,7 +514,7 @@ func TestTerminalDisplay_CIMode_ShowPackageFailure(t *testing.T) {
 	display.ShowPackageFailure("example", output)
 
 	result := buf.String()
-	
+
 	// Should contain PACKAGE FAIL but without color codes
 	if !strings.Contains(result, "PACKAGE FAIL example") {
 		t.Error("CI mode should show PACKAGE FAIL")
@@ -562,7 +562,7 @@ func TestTerminalDisplay_CIMode_ShowFinalResults(t *testing.T) {
 	}
 
 	output := buf.String()
-	
+
 	// Should show simple summary without colors
 	if !strings.Contains(output, "Total: 3 tests") {
 		t.Error("CI mode should show total test count")

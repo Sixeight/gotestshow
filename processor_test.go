@@ -351,7 +351,7 @@ func TestExtractFileLocation(t *testing.T) {
 		{"    math_test.go:15: Error occurred", "math_test.go:15"},
 		{"        example_test.go:42: assertion failed", "example_test.go:42"},
 		{"not a file location", ""},
-		{"regular.go:10: not a test file", ""},
+		{"regular.go:10: not a test file", "regular.go:10"},
 		{"math_test.go:abc: invalid line number", ""},
 		{"math_test.go: missing line number", ""},
 	}
@@ -360,6 +360,54 @@ func TestExtractFileLocation(t *testing.T) {
 		result := extractFileLocation(test.input)
 		if result != test.expected {
 			t.Errorf("extractFileLocation(%q) = %q, expected %q", test.input, result, test.expected)
+		}
+	}
+}
+
+func TestExtractFileLocationWithPackage(t *testing.T) {
+	tests := []struct {
+		input       string
+		packageName string
+		expected    string
+	}{
+		{"    math_test.go:15: Error occurred", "github.com/Sixeight/gotestshow/example", "example/math_test.go:15"},
+		{"        example_test.go:42: assertion failed", "github.com/Sixeight/gotestshow/example/broken", "example/broken/example_test.go:42"},
+		{"example/broken/broken.go:9:9: undefined: undefinedVariable", "github.com/Sixeight/gotestshow/example/broken", "example/broken/broken.go:9"},
+		{"not a file location", "github.com/Sixeight/gotestshow/example", ""},
+		{"math_test.go:abc: invalid line number", "github.com/Sixeight/gotestshow/example", ""},
+		{"math_test.go: missing line number", "github.com/Sixeight/gotestshow/example", ""},
+		// Already relative path should be preserved
+		{"pkg/service/handler_test.go:23: error", "github.com/company/project/pkg/service", "pkg/service/handler_test.go:23"},
+		// Without package context
+		{"handler_test.go:23: error", "", "handler_test.go:23"},
+	}
+
+	for _, test := range tests {
+		result := extractFileLocationWithPackage(test.input, test.packageName)
+		if result != test.expected {
+			t.Errorf("extractFileLocationWithPackage(%q, %q) = %q, expected %q", test.input, test.packageName, result, test.expected)
+		}
+	}
+}
+
+func TestGetRelativePackagePath(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"github.com/Sixeight/gotestshow/example", "example"},
+		{"github.com/Sixeight/gotestshow/example/broken", "example/broken"},
+		{"github.com/company/project/pkg/service", "pkg/service"},
+		{"gitlab.com/user/repo/internal/api", "internal/api"},
+		{"simple/package", "package"},
+		{"standalone", ""},
+		{"", ""},
+	}
+
+	for _, test := range tests {
+		result := getRelativePackagePath(test.input)
+		if result != test.expected {
+			t.Errorf("getRelativePackagePath(%q) = %q, expected %q", test.input, result, test.expected)
 		}
 	}
 }

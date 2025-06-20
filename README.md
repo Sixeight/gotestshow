@@ -16,8 +16,9 @@ A CLI tool that displays `go test -json` output in a real-time, human-friendly f
 
 - **Passed tests**: Update progress counter only (reduces noise)
 - **Failed tests**: Show detailed information immediately
-  - Test name and file location (e.g., `math_test.go:47`)
+  - Test name and file location with package path (e.g., `example/math_test.go:47`)
   - Execution time and error messages
+  - Clear distinction between files in different packages
 - **Skipped tests**: Update counter only
 
 ### 🔧 Multiple Display Modes
@@ -91,7 +92,7 @@ CI mode features:
 ```
 ⠸ Running: 3 | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.2s
 
-✗ FAIL TestMultiply/negative_numbers [math_test.go:47] (0.00s)
+✗ FAIL TestMultiply/negative_numbers [example/math_test.go:47] (0.00s)
 
         math_test.go:48: Multiply(-2, 5) = -10, want -11
         
@@ -103,8 +104,8 @@ CI mode features:
 ✗ FAIL github.com/example/math (1.23s)
   Tests: 15 | Passed: 12 | Failed: 2 | Skipped: 1
 
-    ✗ TestMultiply/negative_numbers [math_test.go:47] (0.00s)
-    ✗ TestDivide/divide_by_zero [math_test.go:72] (0.00s)
+    ✗ TestMultiply/negative_numbers [example/math_test.go:47] (0.00s)
+    ✗ TestDivide/divide_by_zero [example/math_test.go:72] (0.00s)
 
 --------------------------------------------------
 Total: 15 tests | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.24s
@@ -115,12 +116,12 @@ Total: 15 tests | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.24s
 ### CI Mode
 
 ```
-FAIL TestMultiply [math_test.go:47] (0.40s)
+FAIL TestMultiply [example/math_test.go:47] (0.40s)
 
             math_test.go:47: Multiply(4, 5) = 9, want 20
         --- FAIL: TestMultiply (0.40s)
 
-FAIL TestDivide/divide_by_zero [math_test.go:68] (0.30s)
+FAIL TestDivide/divide_by_zero [example/math_test.go:68] (0.30s)
 
             math_test.go:68: expected error for divide by zero, got nil
         --- FAIL: TestDivide/divide_by_zero (0.30s)
@@ -132,8 +133,8 @@ Failed Tests Summary
 FAIL github.com/Sixeight/gotestshow/example (5.68s)
   Tests: 17 | Passed: 10 | Failed: 3 | Skipped: 1
 
-    FAIL TestMultiply [math_test.go:47] (0.40s)
-    FAIL TestDivide/divide_by_zero [math_test.go:68] (0.30s)
+    FAIL TestMultiply [example/math_test.go:47] (0.40s)
+    FAIL TestDivide/divide_by_zero [example/math_test.go:68] (0.30s)
 
 --------------------------------------------------
 
@@ -149,11 +150,12 @@ Standard `go test` output can be difficult to read, especially with large test s
 1. **Reduces noise**: Hides details of passing tests to focus on failures
 2. **Immediate feedback**: Failed tests are displayed instantly
 3. **Visual progress**: Current state is clear at a glance, even with large test suites
-4. **Multiple modes**: 
+4. **Package context**: File locations include package paths to distinguish between files in different packages
+5. **Multiple modes**: 
    - **Normal**: Real-time progress with colors and animations
    - **Timing**: Focus on slow tests and performance analysis
    - **CI**: Clean output perfect for CI/CD pipelines
-5. **CI/CD friendly**: Reads from stdin, making it easy to integrate into existing workflows
+6. **CI/CD friendly**: Reads from stdin, making it easy to integrate into existing workflows
 
 ## Related Projects
 
