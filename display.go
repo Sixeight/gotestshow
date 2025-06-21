@@ -144,10 +144,16 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 			}
 		} else {
 			// Simple format without colors or escape sequences
+			// Add package name to test failure output
+			packageInfo := ""
+			if shouldShowPackageName(d.packages) {
+				packageInfo = fmt.Sprintf(" in %s", result.Package)
+			}
+
 			if result.Location != "" {
-				fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)\n", result.Test, result.Location, result.Elapsed)
+				fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)%s\n", result.Test, result.Location, result.Elapsed, packageInfo)
 			} else {
-				fmt.Fprintf(d.writer, "FAIL %s (%.2fs)\n", result.Test, result.Elapsed)
+				fmt.Fprintf(d.writer, "FAIL %s (%.2fs)%s\n", result.Test, result.Elapsed, packageInfo)
 			}
 		}
 
@@ -258,13 +264,19 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 				colorRed, colorReset, shortPkg)
 		}
 	} else {
+		// Add package name to test failure output
+		packageInfo := ""
+		if shouldShowPackageName(d.packages) {
+			packageInfo = fmt.Sprintf(" in %s", result.Package)
+		}
+
 		// Display test name and location information
 		if result.Location != "" {
-			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s[%s]%s %s(%.2fs)%s\n",
-				colorRed, colorReset, result.Test, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset)
+			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s[%s]%s %s(%.2fs)%s%s\n",
+				colorRed, colorReset, result.Test, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset, packageInfo)
 		} else {
-			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s(%.2fs)%s\n",
-				colorRed, colorReset, result.Test, colorGray, result.Elapsed, colorReset)
+			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s(%.2fs)%s%s\n",
+				colorRed, colorReset, result.Test, colorGray, result.Elapsed, colorReset, packageInfo)
 		}
 	}
 
@@ -646,10 +658,7 @@ func formatDuration(seconds float64) string {
 
 // getShortPackageName extracts the last part of a package path
 func getShortPackageName(fullPackage string) string {
-	parts := strings.Split(fullPackage, "/")
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
+	// Return full package name instead of just the last part
 	return fullPackage
 }
 
