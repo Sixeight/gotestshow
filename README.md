@@ -70,6 +70,7 @@ go test -json ./... | gotestshow -ci
 ```
 
 CI mode features:
+
 - No ANSI escape sequences (safe for log files)
 - No real-time progress updates
 - Only shows failed tests during execution
@@ -86,8 +87,6 @@ CI mode features:
 | `-ci` | Enable CI mode - no escape sequences, only show failures and summary | `false` |
 
 ## Example Output
-
-### Normal Mode
 
 ```
 ⠸ Running: 3 | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.2s
@@ -113,36 +112,6 @@ Total: 15 tests | ✓ Passed: 12 | ✗ Failed: 2 | ⚡ Skipped: 1 | ⏱ 3.24s
 ❌ Tests failed!
 ```
 
-### CI Mode
-
-```
-FAIL TestMultiply [example/math_test.go:47] (0.40s)
-
-            math_test.go:47: Multiply(4, 5) = 9, want 20
-        --- FAIL: TestMultiply (0.40s)
-
-FAIL TestDivide/divide_by_zero [example/math_test.go:68] (0.30s)
-
-            math_test.go:68: expected error for divide by zero, got nil
-        --- FAIL: TestDivide/divide_by_zero (0.30s)
-
-==================================================
-Failed Tests Summary
-==================================================
-
-FAIL github.com/Sixeight/gotestshow/example (5.68s)
-  Tests: 17 | Passed: 10 | Failed: 3 | Skipped: 1
-
-    FAIL TestMultiply [example/math_test.go:47] (0.40s)
-    FAIL TestDivide/divide_by_zero [example/math_test.go:68] (0.30s)
-
---------------------------------------------------
-
-Total: 17 tests | Passed: 10 | Failed: 3 | Skipped: 1 | Time: 5.93s
-
-Tests failed!
-```
-
 ## Why Use gotestshow?
 
 Standard `go test` output can be difficult to read, especially with large test suites or in CI environments. gotestshow:
@@ -151,7 +120,7 @@ Standard `go test` output can be difficult to read, especially with large test s
 2. **Immediate feedback**: Failed tests are displayed instantly
 3. **Visual progress**: Current state is clear at a glance, even with large test suites
 4. **Package context**: File locations include package paths to distinguish between files in different packages
-5. **Multiple modes**: 
+5. **Multiple modes**:
    - **Normal**: Real-time progress with colors and animations
    - **Timing**: Focus on slow tests and performance analysis
    - **CI**: Clean output perfect for CI/CD pipelines
@@ -162,7 +131,6 @@ Standard `go test` output can be difficult to read, especially with large test s
 - [gotestfmt](https://github.com/GoTestTools/gotestfmt) - Format `go test` output for improved readability.
 - [gotestsum](https://github.com/gotestyourself/gotestsum) - Summarize `go test` results.
 - [richgo](https://github.com/kyoh86/richgo) - Colored test output enhancement.
-
 
 ## Development
 
@@ -206,4 +174,3 @@ Sixeight
 ---
 
 *Made to improve the Go testing experience* ✨
-
