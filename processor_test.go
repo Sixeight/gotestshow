@@ -1,6 +1,3 @@
-// ABOUTME: processor_test.go contains unit tests for the EventProcessor functionality.
-// ABOUTME: It tests event processing, state management, and result tracking.
-
 package main
 
 import (

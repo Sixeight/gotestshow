@@ -1,6 +1,3 @@
-// ABOUTME: runner_test.go contains unit tests for the Runner functionality.
-// ABOUTME: It tests the main application flow, event processing, and error handling.
-
 package main
 
 import (

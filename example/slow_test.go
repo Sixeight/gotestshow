@@ -1,6 +1,3 @@
-// ABOUTME: Test file containing tests with long execution time.
-// ABOUTME: Used to verify gotestshow's real-time display functionality.
-
 package example
 
 import (

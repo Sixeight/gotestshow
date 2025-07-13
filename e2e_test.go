@@ -1,6 +1,3 @@
-// ABOUTME: e2e_test.go contains end-to-end tests that test the complete application with real go test output.
-// ABOUTME: It tests the actual binary with real test scenarios to ensure the application works as expected.
-
 package main
 
 import (

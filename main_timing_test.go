@@ -1,6 +1,3 @@
-// ABOUTME: main_timing_test.go contains unit tests for the timing mode functionality.
-// ABOUTME: It tests the timing mode behavior and configuration.
-
 package main
 
 import (

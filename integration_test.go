@@ -1,6 +1,3 @@
-// ABOUTME: integration_test.go contains integration tests that test the complete application flow.
-// ABOUTME: It tests the interaction between EventProcessor, Display, and Runner components working together.
-
 package main
 
 import (

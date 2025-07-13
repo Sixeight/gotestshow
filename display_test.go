@@ -1,6 +1,3 @@
-// ABOUTME: display_test.go contains unit tests for the Display functionality.
-// ABOUTME: It tests display output formatting, progress reporting, and result presentation.
-
 package main
 
 import (

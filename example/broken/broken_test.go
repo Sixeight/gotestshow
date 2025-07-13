@@ -1,6 +1,3 @@
-// ABOUTME: Test for a package with compilation errors.
-// ABOUTME: This test will never be executed.
-
 package broken
 
 import "testing"

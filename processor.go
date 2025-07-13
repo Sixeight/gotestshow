@@ -1,6 +1,3 @@
-// ABOUTME: processor.go contains the core logic for processing test events and managing test state.
-// ABOUTME: It provides interfaces and implementations for handling JSON test events from go test.
-
 package main
 
 import (

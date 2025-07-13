@@ -1,6 +1,3 @@
-// ABOUTME: Package that provides sample math functions for testing.
-// ABOUTME: Contains test cases that pass, fail, and skip for verifying gotestshow's functionality.
-
 package example
 
 // Add returns the sum of two integers

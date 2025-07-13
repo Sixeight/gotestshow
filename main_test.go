@@ -1,6 +1,3 @@
-// ABOUTME: main_test.go contains unit tests for the main package command-line parsing and configuration.
-// ABOUTME: It tests the timing mode flags and threshold parsing functionality.
-
 package main
 
 import (

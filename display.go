@@ -1,6 +1,3 @@
-// ABOUTME: display.go contains all display-related functionality for formatting and showing test results.
-// ABOUTME: It provides interfaces and implementations for different display strategies.
-
 package main
 
 import (

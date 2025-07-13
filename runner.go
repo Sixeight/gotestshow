@@ -1,6 +1,3 @@
-// ABOUTME: runner.go contains the main application runner that coordinates event processing and display.
-// ABOUTME: It handles the application lifecycle, signal handling, and orchestrates all components.
-
 package main
 
 import (

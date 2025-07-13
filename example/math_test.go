@@ -1,6 +1,3 @@
-// ABOUTME: Unit tests for testing functions in math.go.
-// ABOUTME: Contains various test cases including pass, fail, and skip scenarios.
-
 package example
 
 import (

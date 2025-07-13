@@ -1,6 +1,3 @@
-// ABOUTME: display_timing_test.go contains unit tests for the timing mode display functionality.
-// ABOUTME: It tests the ShowTestResult and ShowFinalResults methods with timing mode enabled.
-
 package main
 
 import (

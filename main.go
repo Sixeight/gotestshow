@@ -1,6 +1,3 @@
-// ABOUTME: gotestshow is a CLI tool that parses and formats the output of `go test -json`.
-// ABOUTME: It receives JSON-formatted test results from stdin and displays them in a readable format in real-time.
-
 package main
 
 import (
