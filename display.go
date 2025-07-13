@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 )
@@ -122,138 +123,105 @@ func (d *TerminalDisplay) ShowProgress(packages map[string]*PackageState, hasTes
 
 // ShowTestResult displays the result of a single test
 func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
-	// In CI mode, only show failed tests with simple format (no escape sequences)
-	if d.config != nil && d.config.CIMode {
-		// Only show failures
-		if success {
-			return
-		}
-
-		// Don't display if parent test with subtests fails (only display subtest failures)
-		if result.HasSubtest {
-			return
-		}
-
-		// Handle build errors differently in CI mode
-		if result.Test == "[BUILD]" {
-			shortPkg := getShortPackageName(result.Package)
-			if result.Location != "" {
-				fmt.Fprintf(d.writer, "BUILD FAIL %s [%s]\n", shortPkg, result.Location)
-			} else {
-				fmt.Fprintf(d.writer, "BUILD FAIL %s\n", shortPkg)
-			}
-		} else {
-			// Simple format without colors or escape sequences
-			// Add package name to test failure output
-			packageInfo := ""
-			if shouldShowPackageName(d.packages) {
-				packageInfo = fmt.Sprintf(" in %s", result.Package)
-			}
-
-			if result.Location != "" {
-				fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)%s\n", result.Test, result.Location, result.Elapsed, packageInfo)
-			} else {
-				fmt.Fprintf(d.writer, "FAIL %s (%.2fs)%s\n", result.Test, result.Elapsed, packageInfo)
-			}
-		}
-
-		// Display error output
-		relevantOutput := extractRelevantOutput(result.Output)
-		if len(relevantOutput) > 0 {
-			fmt.Fprintf(d.writer, "\n")
-			for _, line := range relevantOutput {
-				fmt.Fprintf(d.writer, "        %s", line)
-			}
-			fmt.Fprintf(d.writer, "\n")
-		}
-		return
-	}
-
-	// In timing mode, show all test results with execution time
-	if d.config != nil && d.config.TimingMode {
-		// Don't display if parent test with subtests fails (only display subtest failures)
-		if result.HasSubtest {
-			return
-		}
-
-		// Format execution time
-		elapsed := formatDuration(result.Elapsed)
-
-		// Check if test is slow
-		isSlow := false
-		if d.config.Threshold > 0 && time.Duration(result.Elapsed*float64(time.Second)) > d.config.Threshold {
-			isSlow = true
-		}
-
-		// In timing mode, only show slow tests or failed tests
-		if !isSlow && !result.Failed {
-			return
-		}
-
-		// Display test result with timing
-		var icon, color string
-		switch {
-		case result.Failed:
-			icon = "✗"
-			color = colorRed
-		case result.Skipped:
-			icon = "⚡"
-			color = colorYellow
-		case result.Passed:
-			icon = "✓"
-			color = colorGreen
-		}
-
-		// Display test result with timing and slow indicator if applicable
-		slowIndicator := ""
-		if isSlow {
-			slowIndicator = fmt.Sprintf(" %s[SLOW]%s", colorRed, colorReset)
-		}
-
-		// Check if we should show package name (only when multiple packages)
-		packageInfo := ""
-		if shouldShowPackageName(d.packages) {
-			shortPkg := getShortPackageName(result.Package)
-			packageInfo = fmt.Sprintf(" %s%s%s", colorGray, shortPkg, colorReset)
-		}
-
-		if result.Location != "" {
-			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s[%s]%s %s(%s)%s%s%s\n",
-				color, icon, colorReset, result.Test, colorBlue, result.Location, colorReset,
-				colorGray, elapsed, colorReset, slowIndicator, packageInfo)
-		} else {
-			fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s(%s)%s%s%s\n",
-				color, icon, colorReset, result.Test, colorGray, elapsed, colorReset, slowIndicator, packageInfo)
-		}
-
-		// Show error output for failed tests
-		if result.Failed {
-			relevantOutput := extractRelevantOutput(result.Output)
-			if len(relevantOutput) > 0 {
-				fmt.Fprintf(d.writer, "\n")
-				for _, line := range relevantOutput {
-					fmt.Fprintf(d.writer, "        %s%s%s", colorRed, line, colorReset)
-				}
-				fmt.Fprintf(d.writer, "\n")
-			}
-		}
-		return
-	}
-
-	// Normal mode - only show failures
-	if success {
-		// Don't display PASSED and SKIPPED tests (only update progress bar numbers)
-		return
-	}
-
-	// If failed, clear the current line and display on a new line
-	d.ClearLine()
-	// Don't display if parent test with subtests fails (only display subtest failures)
+	// Skip parent tests with subtests in all modes
 	if result.HasSubtest {
 		return
 	}
 
-	// Handle build errors differently
+	switch {
+	case d.config != nil && d.config.CIMode:
+		d.showTestResultCI(result, success)
+	case d.config != nil && d.config.TimingMode:
+		d.showTestResultTiming(result, success)
+	default:
+		d.showTestResultNormal(result, success)
+	}
+}
+
+func (d *TerminalDisplay) showTestResultCI(result *TestResult, success bool) {
+	// CI mode: Only show failures, no colors
+	if success {
+		return
+	}
+
+	d.printTestFailureCI(result)
+	d.printTestOutput(result.Output, false)
+}
+
+func (d *TerminalDisplay) showTestResultTiming(result *TestResult, success bool) {
+	// Timing mode: Show slow tests and failures
+	elapsed := formatDuration(result.Elapsed)
+	isSlow := d.isSlowTest(result.Elapsed)
+
+	if !isSlow && !result.Failed {
+		return
+	}
+
+	icon, color := d.getTestIcon(result)
+	slowIndicator := ""
+	if isSlow {
+		slowIndicator = fmt.Sprintf(" %s[SLOW]%s", colorRed, colorReset)
+	}
+
+	d.printTestResult(icon, color, result, elapsed, slowIndicator)
+
+	if result.Failed {
+		d.printTestOutput(result.Output, true)
+	}
+}
+
+func (d *TerminalDisplay) showTestResultNormal(result *TestResult, success bool) {
+	// Normal mode: Only show failures
+	if success {
+		return
+	}
+
+	d.ClearLine()
+	d.printTestFailure(result)
+	d.printTestOutput(result.Output, true)
+}
+
+func (d *TerminalDisplay) isSlowTest(elapsed float64) bool {
+	return d.config.Threshold > 0 &&
+		time.Duration(elapsed*float64(time.Second)) > d.config.Threshold
+}
+
+func (d *TerminalDisplay) getTestIcon(result *TestResult) (string, string) {
+	switch {
+	case result.Failed:
+		return "✗", colorRed
+	case result.Skipped:
+		return "⚡", colorYellow
+	case result.Passed:
+		return "✓", colorGreen
+	default:
+		return "?", colorGray
+	}
+}
+
+func (d *TerminalDisplay) printTestFailureCI(result *TestResult) {
+	if result.Test == "[BUILD]" {
+		shortPkg := getShortPackageName(result.Package)
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "BUILD FAIL %s [%s]\n", shortPkg, result.Location)
+		} else {
+			fmt.Fprintf(d.writer, "BUILD FAIL %s\n", shortPkg)
+		}
+	} else {
+		packageInfo := ""
+		if shouldShowPackageName(d.packages) {
+			packageInfo = fmt.Sprintf(" in %s", result.Package)
+		}
+
+		if result.Location != "" {
+			fmt.Fprintf(d.writer, "FAIL %s [%s] (%.2fs)%s\n", result.Test, result.Location, result.Elapsed, packageInfo)
+		} else {
+			fmt.Fprintf(d.writer, "FAIL %s (%.2fs)%s\n", result.Test, result.Elapsed, packageInfo)
+		}
+	}
+}
+
+func (d *TerminalDisplay) printTestFailure(result *TestResult) {
 	if result.Test == "[BUILD]" {
 		shortPkg := getShortPackageName(result.Package)
 		if result.Location != "" {
@@ -264,13 +232,11 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 				colorRed, colorReset, shortPkg)
 		}
 	} else {
-		// Add package name to test failure output
 		packageInfo := ""
 		if shouldShowPackageName(d.packages) {
 			packageInfo = fmt.Sprintf(" in %s", result.Package)
 		}
 
-		// Display test name and location information
 		if result.Location != "" {
 			fmt.Fprintf(d.writer, "%s✗ FAIL%s %s %s[%s]%s %s(%.2fs)%s%s\n",
 				colorRed, colorReset, result.Test, colorBlue, result.Location, colorReset, colorGray, result.Elapsed, colorReset, packageInfo)
@@ -279,16 +245,40 @@ func (d *TerminalDisplay) ShowTestResult(result *TestResult, success bool) {
 				colorRed, colorReset, result.Test, colorGray, result.Elapsed, colorReset, packageInfo)
 		}
 	}
+}
 
-	// Display error output (display all related output)
-	relevantOutput := extractRelevantOutput(result.Output)
-	if len(relevantOutput) > 0 {
-		fmt.Fprintf(d.writer, "\n")
-		for _, line := range relevantOutput {
-			fmt.Fprintf(d.writer, "        %s%s%s", colorRed, line, colorReset)
-		}
-		fmt.Fprintf(d.writer, "\n")
+func (d *TerminalDisplay) printTestResult(icon, color string, result *TestResult, elapsed, slowIndicator string) {
+	packageInfo := ""
+	if shouldShowPackageName(d.packages) {
+		shortPkg := getShortPackageName(result.Package)
+		packageInfo = fmt.Sprintf(" %s%s%s", colorGray, shortPkg, colorReset)
 	}
+
+	if result.Location != "" {
+		fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s[%s]%s %s(%s)%s%s%s\n",
+			color, icon, colorReset, result.Test, colorBlue, result.Location, colorReset,
+			colorGray, elapsed, colorReset, slowIndicator, packageInfo)
+	} else {
+		fmt.Fprintf(d.writer, "\r\033[K%s%s%s %s %s(%s)%s%s%s\n",
+			color, icon, colorReset, result.Test, colorGray, elapsed, colorReset, slowIndicator, packageInfo)
+	}
+}
+
+func (d *TerminalDisplay) printTestOutput(output []string, withColor bool) {
+	relevantOutput := extractRelevantOutput(output)
+	if len(relevantOutput) == 0 {
+		return
+	}
+
+	fmt.Fprintf(d.writer, "\n")
+	for _, line := range relevantOutput {
+		if withColor {
+			fmt.Fprintf(d.writer, "        %s%s%s", colorRed, line, colorReset)
+		} else {
+			fmt.Fprintf(d.writer, "        %s", line)
+		}
+	}
+	fmt.Fprintf(d.writer, "\n")
 }
 
 // ShowPackageFailure displays package-level failures
@@ -674,23 +664,23 @@ func shouldShowPackageName(packages map[string]*PackageState) bool {
 	return packageCount > 1
 }
 
+type slowTest struct {
+	name     string
+	elapsed  float64
+	location string
+}
+
 // showSlowTestsSummary displays a summary of slow tests
 func (d *TerminalDisplay) showSlowTestsSummary(results map[string]*TestResult) {
-	// Collect slow tests grouped by package
-	type slowTest struct {
-		name     string
-		elapsed  float64
-		location string
-	}
-
 	slowTestsByPackage := make(map[string][]slowTest)
+
+	// Collect slow tests
 	for _, result := range results {
 		if result.HasSubtest || result.Test == "[PACKAGE]" {
 			continue
 		}
 
-		testDuration := time.Duration(result.Elapsed * float64(time.Second))
-		if testDuration > d.config.Threshold {
+		if d.isSlowTest(result.Elapsed) {
 			test := slowTest{
 				name:     result.Test,
 				elapsed:  result.Elapsed,
@@ -704,33 +694,34 @@ func (d *TerminalDisplay) showSlowTestsSummary(results map[string]*TestResult) {
 		return
 	}
 
-	// Display slow tests summary grouped by package
+	// Display header
 	fmt.Fprintln(d.writer, "\n"+strings.Repeat("=", 50))
 	fmt.Fprintf(d.writer, "🐢 Slow Tests (>%s)\n", d.config.Threshold)
 	fmt.Fprintln(d.writer, strings.Repeat("=", 50))
 
+	// Display tests by package
 	for pkgName, tests := range slowTestsByPackage {
-		// Sort tests by elapsed time (slowest first)
-		for i := 0; i < len(tests)-1; i++ {
-			for j := i + 1; j < len(tests); j++ {
-				if tests[j].elapsed > tests[i].elapsed {
-					tests[i], tests[j] = tests[j], tests[i]
-				}
-			}
-		}
+		// Sort by elapsed time (slowest first)
+		sort.Slice(tests, func(i, j int) bool {
+			return tests[i].elapsed > tests[j].elapsed
+		})
 
-		shortPkg := getShortPackageName(pkgName)
-		fmt.Fprintf(d.writer, "\n=== %s%s%s ===\n", colorBlue, shortPkg, colorReset)
+		d.displaySlowTestsForPackage(pkgName, tests)
+	}
+}
 
-		for _, test := range tests {
-			elapsed := formatDuration(test.elapsed)
-			if test.location != "" {
-				fmt.Fprintf(d.writer, "  %s %s[%s]%s %s(%s)%s\n",
-					test.name, colorBlue, test.location, colorReset, colorRed, elapsed, colorReset)
-			} else {
-				fmt.Fprintf(d.writer, "  %s %s(%s)%s\n",
-					test.name, colorRed, elapsed, colorReset)
-			}
+func (d *TerminalDisplay) displaySlowTestsForPackage(pkgName string, tests []slowTest) {
+	shortPkg := getShortPackageName(pkgName)
+	fmt.Fprintf(d.writer, "\n=== %s%s%s ===\n", colorBlue, shortPkg, colorReset)
+
+	for _, test := range tests {
+		elapsed := formatDuration(test.elapsed)
+		if test.location != "" {
+			fmt.Fprintf(d.writer, "  %s %s[%s]%s %s(%s)%s\n",
+				test.name, colorBlue, test.location, colorReset, colorRed, elapsed, colorReset)
+		} else {
+			fmt.Fprintf(d.writer, "  %s %s(%s)%s\n",
+				test.name, colorRed, elapsed, colorReset)
 		}
 	}
 }

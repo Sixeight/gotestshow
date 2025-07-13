@@ -92,6 +92,22 @@ func (p *DefaultEventProcessor) HasTestsStarted() bool {
 
 func (p *DefaultEventProcessor) processTestEvent(event TestEvent) {
 	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
+	result := p.ensureTestResult(key, event)
+	pkg := p.packages[event.Package]
+
+	p.markParentTestIfSubtest(event)
+
+	switch event.Action {
+	case "run":
+		p.handleTestRun(result, pkg)
+	case "output":
+		p.handleTestOutput(result, event)
+	case "pass", "fail", "skip":
+		p.handleTestCompletion(result, pkg, event)
+	}
+}
+
+func (p *DefaultEventProcessor) ensureTestResult(key string, event TestEvent) *TestResult {
 	if _, exists := p.results[key]; !exists {
 		p.results[key] = &TestResult{
 			Package: event.Package,
@@ -99,51 +115,58 @@ func (p *DefaultEventProcessor) processTestEvent(event TestEvent) {
 			Output:  []string{},
 		}
 	}
-	result := p.results[key]
-	pkg := p.packages[event.Package]
+	return p.results[key]
+}
 
-	// Mark parent test for subtests
-	if strings.Contains(event.Test, "/") {
-		parentTestName := strings.Split(event.Test, "/")[0]
-		parentKey := fmt.Sprintf("%s/%s", event.Package, parentTestName)
-		if parentResult, exists := p.results[parentKey]; exists {
-			parentResult.HasSubtest = true
-		}
+func (p *DefaultEventProcessor) markParentTestIfSubtest(event TestEvent) {
+	if !strings.Contains(event.Test, "/") {
+		return
 	}
 
-	switch event.Action {
-	case "run":
-		result.Started = true
-		pkg.Running++
-		p.hasTestsStarted = true
-		pkg.Total++
-	case "output":
-		result.Output = append(result.Output, event.Output)
-		if result.Location == "" {
-			if location := extractFileLocationWithPackage(event.Output, event.Package); location != "" {
-				result.Location = location
-			}
+	parentTestName := strings.Split(event.Test, "/")[0]
+	parentKey := fmt.Sprintf("%s/%s", event.Package, parentTestName)
+	if parentResult, exists := p.results[parentKey]; exists {
+		parentResult.HasSubtest = true
+	}
+}
+
+func (p *DefaultEventProcessor) handleTestRun(result *TestResult, pkg *PackageState) {
+	result.Started = true
+	pkg.Running++
+	pkg.Total++
+	p.hasTestsStarted = true
+}
+
+func (p *DefaultEventProcessor) handleTestOutput(result *TestResult, event TestEvent) {
+	result.Output = append(result.Output, event.Output)
+	if result.Location == "" {
+		if location := extractFileLocationWithPackage(event.Output, event.Package); location != "" {
+			result.Location = location
 		}
+	}
+}
+
+func (p *DefaultEventProcessor) handleTestCompletion(result *TestResult, pkg *PackageState, event TestEvent) {
+	result.Elapsed = event.Elapsed
+	pkg.Running--
+
+	isParentWithSubtests := p.isParentWithSubtests(event.Test, event.Package)
+
+	switch event.Action {
 	case "pass":
 		result.Passed = true
-		result.Elapsed = event.Elapsed
-		pkg.Running--
-		if !p.isParentWithSubtests(event.Test, event.Package) {
+		if !isParentWithSubtests {
 			pkg.Passed++
 		}
 	case "fail":
 		result.Failed = true
-		result.Elapsed = event.Elapsed
-		pkg.Running--
-		if !p.isParentWithSubtests(event.Test, event.Package) {
+		if !isParentWithSubtests {
 			pkg.Failed++
 			pkg.IndividualTestFailed++
 		}
 	case "skip":
 		result.Skipped = true
-		result.Elapsed = event.Elapsed
-		pkg.Running--
-		if !p.isParentWithSubtests(event.Test, event.Package) {
+		if !isParentWithSubtests {
 			pkg.Skipped++
 		}
 	}
@@ -293,45 +316,41 @@ func extractFileLocationWithPackage(output, packageName string) string {
 
 // getRelativePackagePath extracts a relative package path from a full package name
 func getRelativePackagePath(fullPackageName string) string {
-	// Try to find a meaningful relative path by looking for common patterns
-	// This is a heuristic-based approach
-
-	// Split by "/" and try to find where the meaningful path starts
 	parts := strings.Split(fullPackageName, "/")
 	if len(parts) <= 1 {
 		return ""
 	}
 
-	// Look for common repository patterns
+	// Handle VCS patterns (github.com/user/repo/...)
 	for i, part := range parts {
-		// If we find "github.com", "gitlab.com", etc., skip the first 3 parts (domain/user/repo)
-		if part == "github.com" || part == "gitlab.com" || part == "bitbucket.org" {
-			if i+3 < len(parts) {
-				return strings.Join(parts[i+3:], "/")
-			}
-			break
-		}
-		// If we find a part that looks like a module name, take everything after it
-		if strings.Contains(part, ".") && (strings.Contains(part, "com") || strings.Contains(part, "org") || strings.Contains(part, "net")) {
-			if i+1 < len(parts) {
-				return strings.Join(parts[i+1:], "/")
-			}
-			break
+		if isVCSDomain(part) && i+3 < len(parts) {
+			return strings.Join(parts[i+3:], "/")
 		}
 	}
 
-	// Fallback: if we can't find a good pattern, just take the last meaningful parts
-	if len(parts) >= 2 {
-		// For simple cases, take the last 1-2 parts
-		if len(parts) == 2 {
-			return parts[1]
-		} else {
-			// Take the last 2 parts if available
-			return strings.Join(parts[len(parts)-2:], "/")
+	// Handle domain patterns (example.com/...)
+	for i, part := range parts {
+		if isDomainLike(part) && i+1 < len(parts) {
+			return strings.Join(parts[i+1:], "/")
 		}
 	}
 
-	return ""
+	// Fallback: use last 1-2 meaningful parts
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return strings.Join(parts[len(parts)-2:], "/")
+}
+
+func isVCSDomain(s string) bool {
+	return s == "github.com" || s == "gitlab.com" || s == "bitbucket.org"
+}
+
+func isDomainLike(s string) bool {
+	return strings.Contains(s, ".") &&
+		(strings.HasSuffix(s, ".com") ||
+			strings.HasSuffix(s, ".org") ||
+			strings.HasSuffix(s, ".net"))
 }
 
 // shouldDisplayPackageFailure determines if package failure should be displayed

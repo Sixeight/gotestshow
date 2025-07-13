@@ -45,30 +45,60 @@ func (r *Runner) SetConfig(config *Config) {
 func (r *Runner) Run() int {
 	startTime := time.Now()
 
-	// In CI mode, don't use cursor control escape sequences
-	if r.config == nil || !r.config.CIMode {
-		// Hide cursor
-		fmt.Fprint(r.output, "\033[?25l")
-		// Ensure cursor is restored when function exits
-		defer fmt.Fprint(r.output, "\033[?25h")
+	ctx := r.setupEnvironment()
+	defer r.cleanup()
 
-		// Setup signal handling
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-sigChan
-			fmt.Fprint(r.output, "\033[?25h") // Show cursor
-			os.Exit(1)
-		}()
+	_, cancel := r.startProgressDisplay(ctx, startTime)
+	defer cancel()
+
+	if err := r.processInput(); err != nil {
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+		r.display.ClearLine()
+		r.handleInputError(err)
+		return 1
 	}
 
-	// Start progress display goroutine
+	return r.showResults(startTime)
+}
+
+func (r *Runner) setupEnvironment() context.Context {
+	if r.config != nil && r.config.CIMode {
+		return context.Background()
+	}
+
+	// Hide cursor
+	fmt.Fprint(r.output, "\033[?25l")
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigChan
+		fmt.Fprint(r.output, "\033[?25h")
+		cancel()
+		os.Exit(1)
+	}()
 
+	return ctx
+}
+
+func (r *Runner) cleanup() {
+	if r.config == nil || !r.config.CIMode {
+		fmt.Fprint(r.output, "\033[?25h")
+	}
+}
+
+func (r *Runner) startProgressDisplay(ctx context.Context, startTime time.Time) (context.Context, context.CancelFunc) {
+	progressCtx, cancel := context.WithCancel(ctx)
 	progressRunner := NewProgressRunner(r.display, r.processor, 100*time.Millisecond)
-	go progressRunner.Run(ctx, startTime)
+	go progressRunner.Run(progressCtx, startTime)
+	return progressCtx, cancel
+}
 
-	// Process JSON events from input
+func (r *Runner) processInput() error {
 	scanner := bufio.NewScanner(r.input)
 	jsonErrorCount := 0
 	totalLines := 0
@@ -82,67 +112,75 @@ func (r *Runner) Run() int {
 		if err := json.Unmarshal(line, &event); err != nil {
 			jsonErrorCount++
 
-			// If first line is not JSON and it's not empty and doesn't look like JSON, it's likely not JSON input at all
 			if totalLines == 1 && len(line) > 0 && !validJSONFound && !bytes.Contains(line, []byte("{")) {
-				// Stop progress display
-				cancel()
-				time.Sleep(50 * time.Millisecond)
-				r.display.ClearLine()
-
-				// Show help message
-				fmt.Fprintln(r.output, "\nError: Input is not in JSON format.")
-				fmt.Fprintln(r.output, "gotestshow expects JSON output from 'go test -json'.")
-				fmt.Fprintln(r.output)
-				r.display.ShowHelp()
-				return 1
+				return fmt.Errorf("not JSON input")
 			}
-			// Skip invalid JSON lines and continue processing
 			continue
 		}
 
 		validJSONFound = true
-
 		r.processor.ProcessEvent(event)
-
-		// Display test results immediately
-		if event.Test != "" && (event.Action == "pass" || event.Action == "fail" || event.Action == "skip") {
-			results := r.processor.GetResults()
-			key := fmt.Sprintf("%s/%s", event.Package, event.Test)
-			if result, exists := results[key]; exists {
-				r.display.ShowTestResult(result, event.Action != "fail")
-			}
-		} else if event.Action == "build-fail" {
-			// Display build failures immediately
-			packageName := event.ImportPath
-			if idx := strings.Index(packageName, " ["); idx != -1 {
-				packageName = packageName[:idx]
-			}
-			results := r.processor.GetResults()
-			key := fmt.Sprintf("%s/[BUILD]", packageName)
-			if result, exists := results[key]; exists {
-				r.display.ShowTestResult(result, false) // Show as failure
-			}
-		} else if event.Package != "" && event.Action == "fail" {
-			// Display package failures immediately
-			packages := r.processor.GetPackages()
-			if pkg, exists := packages[event.Package]; exists && shouldDisplayPackageFailure(pkg) {
-				r.display.ShowPackageFailure(event.Package, pkg.Output)
-			}
-		}
+		r.displayEventResult(event)
 	}
-
-	// Stop progress display immediately after scanner loop ends
-	cancel()
 
 	if err := scanner.Err(); err != nil && err != io.EOF {
-		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
-		return 1
+		return fmt.Errorf("reading input: %w", err)
 	}
 
-	// Wait a bit for progress goroutine to stop
-	time.Sleep(50 * time.Millisecond)
+	return nil
+}
 
-	// Clear progress and show final results
+func (r *Runner) displayEventResult(event TestEvent) {
+	switch {
+	case event.Test != "" && (event.Action == "pass" || event.Action == "fail" || event.Action == "skip"):
+		r.displayTestResult(event)
+	case event.Action == "build-fail":
+		r.displayBuildFailure(event)
+	case event.Package != "" && event.Action == "fail":
+		r.displayPackageFailure(event)
+	}
+}
+
+func (r *Runner) displayTestResult(event TestEvent) {
+	results := r.processor.GetResults()
+	key := fmt.Sprintf("%s/%s", event.Package, event.Test)
+	if result, exists := results[key]; exists {
+		r.display.ShowTestResult(result, event.Action != "fail")
+	}
+}
+
+func (r *Runner) displayBuildFailure(event TestEvent) {
+	packageName := event.ImportPath
+	if idx := strings.Index(packageName, " ["); idx != -1 {
+		packageName = packageName[:idx]
+	}
+	results := r.processor.GetResults()
+	key := fmt.Sprintf("%s/[BUILD]", packageName)
+	if result, exists := results[key]; exists {
+		r.display.ShowTestResult(result, false)
+	}
+}
+
+func (r *Runner) displayPackageFailure(event TestEvent) {
+	packages := r.processor.GetPackages()
+	if pkg, exists := packages[event.Package]; exists && shouldDisplayPackageFailure(pkg) {
+		r.display.ShowPackageFailure(event.Package, pkg.Output)
+	}
+}
+
+func (r *Runner) handleInputError(err error) {
+	if err.Error() == "not JSON input" {
+		fmt.Fprintln(r.output, "\nError: Input is not in JSON format.")
+		fmt.Fprintln(r.output, "gotestshow expects JSON output from 'go test -json'.")
+		fmt.Fprintln(r.output)
+		r.display.ShowHelp()
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	}
+}
+
+func (r *Runner) showResults(startTime time.Time) int {
+	time.Sleep(50 * time.Millisecond)
 	r.display.ClearLine()
 	packages := r.processor.GetPackages()
 	results := r.processor.GetResults()

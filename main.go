@@ -73,38 +73,50 @@ type Config struct {
 	CIMode     bool
 }
 
-func main() {
+func parseConfig() (*Config, error) {
 	help := flag.Bool("help", false, "Show help message")
 	timing := flag.Bool("timing", false, "Enable timing mode to show only slow tests and failures")
 	threshold := flag.String("threshold", "500ms", "Threshold for slow tests (e.g., 1s, 500ms)")
 	ci := flag.Bool("ci", false, "Enable CI mode - no escape sequences, only show failures and summary")
 	flag.Parse()
 
-	// Parse threshold duration
-	thresholdDuration, err := time.ParseDuration(*threshold)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid threshold format: %s\n", err)
-		os.Exit(1)
+	if *help {
+		return nil, fmt.Errorf("help requested")
 	}
 
-	config := &Config{
+	thresholdDuration, err := time.ParseDuration(*threshold)
+	if err != nil {
+		return nil, fmt.Errorf("invalid threshold format: %w", err)
+	}
+
+	return &Config{
 		TimingMode: *timing,
 		Threshold:  thresholdDuration,
 		CIMode:     *ci,
+	}, nil
+}
+
+func hasStdinInput() bool {
+	stat, _ := os.Stdin.Stat()
+	return (stat.Mode() & os.ModeCharDevice) == 0
+}
+
+func main() {
+	config, err := parseConfig()
+	if err != nil {
+		if err.Error() == "help requested" {
+			display := NewTerminalDisplay(os.Stdout, true)
+			display.ShowHelp()
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
 	}
 
 	display := NewTerminalDisplay(os.Stdout, true)
 	display.SetConfig(config)
 
-	if *help {
-		display.ShowHelp()
-		os.Exit(0)
-	}
-
-	// Check if stdin has input
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) != 0 {
-		// No input from pipe
+	if !hasStdinInput() {
 		display.ShowHelp()
 		os.Exit(0)
 	}
@@ -112,6 +124,5 @@ func main() {
 	processor := NewEventProcessor()
 	runner := NewRunner(processor, display, os.Stdin, os.Stdout)
 	runner.SetConfig(config)
-	exitCode := runner.Run()
-	os.Exit(exitCode)
+	os.Exit(runner.Run())
 }

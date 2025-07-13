@@ -12,52 +12,73 @@ import (
 
 // MockEventProcessor is a mock implementation of EventProcessor for testing
 type MockEventProcessor struct {
-	events       []TestEvent
-	hasStarted   bool
-	packageState map[string]*PackageState
+	events     []TestEvent
+	results    map[string]*TestResult
+	packages   map[string]*PackageState
+	hasStarted bool
 }
 
 func NewMockEventProcessor() *MockEventProcessor {
 	return &MockEventProcessor{
-		events:       []TestEvent{},
-		packageState: make(map[string]*PackageState),
+		events:   []TestEvent{},
+		results:  make(map[string]*TestResult),
+		packages: make(map[string]*PackageState),
 	}
 }
 
 func (m *MockEventProcessor) ProcessEvent(event TestEvent) {
 	m.events = append(m.events, event)
-	if event.Test != "" && event.Action == "run" {
-		m.hasStarted = true
+
+	if event.Test != "" {
+		m.processTestEvent(event)
 	}
+
 	if event.Package != "" {
-		if _, exists := m.packageState[event.Package]; !exists {
-			m.packageState[event.Package] = &PackageState{Name: event.Package}
-		}
-		if event.Action == "fail" {
-			m.packageState[event.Package].Failed = 1
-		}
+		m.processPackageEvent(event)
 	}
+}
+
+func (m *MockEventProcessor) processTestEvent(event TestEvent) {
+	key := event.Package + "/" + event.Test
+
+	if event.Action == "run" {
+		m.hasStarted = true
+		m.results[key] = &TestResult{
+			Package: event.Package,
+			Test:    event.Test,
+			Started: true,
+		}
+		return
+	}
+
+	if result, exists := m.results[key]; exists {
+		result.Passed = event.Action == "pass"
+		result.Failed = event.Action == "fail"
+		result.Skipped = event.Action == "skip"
+	}
+}
+
+func (m *MockEventProcessor) processPackageEvent(event TestEvent) {
+	pkg := m.ensurePackage(event.Package)
+
+	if event.Action == "fail" {
+		pkg.Failed = 1
+	}
+}
+
+func (m *MockEventProcessor) ensurePackage(name string) *PackageState {
+	if _, exists := m.packages[name]; !exists {
+		m.packages[name] = &PackageState{Name: name}
+	}
+	return m.packages[name]
 }
 
 func (m *MockEventProcessor) GetResults() map[string]*TestResult {
-	results := make(map[string]*TestResult)
-	for _, event := range m.events {
-		if event.Test != "" {
-			key := event.Package + "/" + event.Test
-			results[key] = &TestResult{
-				Package: event.Package,
-				Test:    event.Test,
-				Passed:  event.Action == "pass",
-				Failed:  event.Action == "fail",
-				Skipped: event.Action == "skip",
-			}
-		}
-	}
-	return results
+	return m.results
 }
 
 func (m *MockEventProcessor) GetPackages() map[string]*PackageState {
-	return m.packageState
+	return m.packages
 }
 
 func (m *MockEventProcessor) HasTestsStarted() bool {
@@ -163,7 +184,7 @@ func TestRunner_Run_PackageFailure(t *testing.T) {
 	runner := NewRunner(processor, display, input, &output)
 
 	// Set up package state to trigger package failure display
-	processor.packageState["example"] = &PackageState{
+	processor.packages["example"] = &PackageState{
 		Name:   "example",
 		Output: []string{"build failed\n"},
 		Failed: 1,
