@@ -8,6 +8,7 @@ import (
 
 // TestIntegration_CompleteWorkflow tests the complete workflow from JSON input to final output
 func TestIntegration_CompleteWorkflow(t *testing.T) {
+	t.Parallel()
 	// Sample JSON input that represents a real go test -json output
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestMath"}
 {"Time":"2023-01-01T00:00:01Z","Action":"output","Package":"example","Test":"TestMath","Output":"=== RUN   TestMath\n"}
@@ -76,6 +77,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 
 // TestIntegration_SuccessfulTests tests the workflow with all passing tests
 func TestIntegration_SuccessfulTests(t *testing.T) {
+	t.Parallel()
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestA"}
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"example","Test":"TestA","Elapsed":0.01}
 {"Time":"2023-01-01T00:00:02Z","Action":"run","Package":"example","Test":"TestB"}
@@ -120,6 +122,7 @@ func TestIntegration_SuccessfulTests(t *testing.T) {
 
 // TestIntegration_SkippedTests tests the workflow with skipped tests
 func TestIntegration_SkippedTests(t *testing.T) {
+	t.Parallel()
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestSkipped"}
 {"Time":"2023-01-01T00:00:01Z","Action":"output","Package":"example","Test":"TestSkipped","Output":"=== RUN   TestSkipped\n"}
 {"Time":"2023-01-01T00:00:02Z","Action":"output","Package":"example","Test":"TestSkipped","Output":"--- SKIP: TestSkipped (0.00s)\n"}
@@ -155,6 +158,7 @@ func TestIntegration_SkippedTests(t *testing.T) {
 
 // TestIntegration_PackageBuildFailure tests the workflow with package build failures
 func TestIntegration_PackageBuildFailure(t *testing.T) {
+	t.Parallel()
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"output","Package":"broken","Output":"# broken [build failed]\n"}
 {"Time":"2023-01-01T00:00:01Z","Action":"output","Package":"broken","Output":"syntax error: unexpected '}' at end of statement\n"}
 {"Time":"2023-01-01T00:00:02Z","Action":"fail","Package":"broken","Elapsed":0.1}
@@ -192,6 +196,7 @@ func TestIntegration_PackageBuildFailure(t *testing.T) {
 
 // TestIntegration_Subtests tests the workflow with subtests
 func TestIntegration_Subtests(t *testing.T) {
+	t.Parallel()
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestParent"}
 {"Time":"2023-01-01T00:00:01Z","Action":"run","Package":"example","Test":"TestParent/SubA"}
 {"Time":"2023-01-01T00:00:02Z","Action":"pass","Package":"example","Test":"TestParent/SubA","Elapsed":0.01}
@@ -241,6 +246,7 @@ func TestIntegration_Subtests(t *testing.T) {
 
 // TestIntegration_MultiplePackages tests the workflow with multiple packages
 func TestIntegration_MultiplePackages(t *testing.T) {
+	t.Parallel()
 	jsonInput := `{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"pkg1","Test":"TestPkg1"}
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"pkg1","Test":"TestPkg1","Elapsed":0.01}
 {"Time":"2023-01-01T00:00:02Z","Action":"pass","Package":"pkg1","Elapsed":0.02}
@@ -291,6 +297,7 @@ func TestIntegration_MultiplePackages(t *testing.T) {
 
 // TestIntegration_EmptyOutput tests the workflow with no test events
 func TestIntegration_EmptyOutput(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader("")
 	var output bytes.Buffer
 

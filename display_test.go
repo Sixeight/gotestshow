@@ -8,6 +8,7 @@ import (
 )
 
 func TestTerminalDisplay_ShowHelp(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -28,6 +29,7 @@ func TestTerminalDisplay_ShowHelp(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowProgress(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -59,6 +61,7 @@ func TestTerminalDisplay_ShowProgress(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowProgress_Initializing(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -74,6 +77,7 @@ func TestTerminalDisplay_ShowProgress_Initializing(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowTestResult_Success(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -94,6 +98,7 @@ func TestTerminalDisplay_ShowTestResult_Success(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowTestResult_Failure(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -131,6 +136,7 @@ func TestTerminalDisplay_ShowTestResult_Failure(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowTestResult_Failure_NoLocation(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -164,6 +170,7 @@ func TestTerminalDisplay_ShowTestResult_Failure_NoLocation(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowTestResult_Subtest(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -185,6 +192,7 @@ func TestTerminalDisplay_ShowTestResult_Subtest(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowPackageFailure(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -210,6 +218,7 @@ func TestTerminalDisplay_ShowPackageFailure(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowFinalResults_Success(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -246,6 +255,7 @@ func TestTerminalDisplay_ShowFinalResults_Success(t *testing.T) {
 }
 
 func TestTerminalDisplay_ShowFinalResults_Failure(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 
@@ -289,6 +299,7 @@ func TestTerminalDisplay_ShowFinalResults_Failure(t *testing.T) {
 }
 
 func TestAnimation_GetSpinner(t *testing.T) {
+	t.Parallel()
 	animation := NewAnimation()
 
 	spinner1 := animation.GetSpinner()
@@ -322,6 +333,7 @@ func TestAnimation_GetSpinner(t *testing.T) {
 }
 
 func TestAnimation_GetDots(t *testing.T) {
+	t.Parallel()
 	animation := NewAnimation()
 
 	dots := animation.GetDots()
@@ -341,6 +353,7 @@ func TestAnimation_GetDots(t *testing.T) {
 }
 
 func TestExtractRelevantOutput(t *testing.T) {
+	t.Parallel()
 	output := []string{
 		"=== RUN   TestExample\n",
 		"    example_test.go:10: Error message\n",
@@ -371,6 +384,7 @@ func TestExtractRelevantOutput(t *testing.T) {
 }
 
 func TestCollectSummaryStats(t *testing.T) {
+	t.Parallel()
 	packages := map[string]*PackageState{
 		"example1": {
 			Name:   "example1",
@@ -408,6 +422,7 @@ func TestCollectSummaryStats(t *testing.T) {
 }
 
 func TestTerminalDisplay_CIMode_ShowProgress(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 	config := &Config{CIMode: true}
@@ -434,6 +449,7 @@ func TestTerminalDisplay_CIMode_ShowProgress(t *testing.T) {
 }
 
 func TestTerminalDisplay_CIMode_ShowTestResult_Success(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 	config := &Config{CIMode: true}
@@ -456,6 +472,7 @@ func TestTerminalDisplay_CIMode_ShowTestResult_Success(t *testing.T) {
 }
 
 func TestTerminalDisplay_CIMode_ShowTestResult_Failure(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 	config := &Config{CIMode: true}
@@ -498,6 +515,7 @@ func TestTerminalDisplay_CIMode_ShowTestResult_Failure(t *testing.T) {
 }
 
 func TestTerminalDisplay_CIMode_ShowPackageFailure(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 	config := &Config{CIMode: true}
@@ -528,6 +546,7 @@ func TestTerminalDisplay_CIMode_ShowPackageFailure(t *testing.T) {
 }
 
 func TestTerminalDisplay_CIMode_ShowFinalResults(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, true)
 	config := &Config{CIMode: true}

@@ -7,6 +7,7 @@ import (
 )
 
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a, b int
@@ -19,6 +20,7 @@ func TestAdd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			time.Sleep(300 * time.Millisecond) // Simulate test execution
 			got := Add(tt.a, tt.b)
 			if got != tt.want {
@@ -29,6 +31,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestSubtract(t *testing.T) {
+	t.Parallel()
 	time.Sleep(500 * time.Millisecond) // Longer test
 	result := Subtract(10, 3)
 	if result != 7 {
@@ -37,6 +40,7 @@ func TestSubtract(t *testing.T) {
 }
 
 func TestMultiply(t *testing.T) {
+	t.Parallel()
 	// This test will fail (intentional bug)
 	time.Sleep(400 * time.Millisecond)
 	result := Multiply(4, 5)
@@ -46,7 +50,9 @@ func TestMultiply(t *testing.T) {
 }
 
 func TestDivide(t *testing.T) {
+	t.Parallel()
 	t.Run("normal division", func(t *testing.T) {
+		t.Parallel()
 		time.Sleep(200 * time.Millisecond)
 		result, err := Divide(10, 2)
 		if err != nil {
@@ -58,6 +64,7 @@ func TestDivide(t *testing.T) {
 	})
 
 	t.Run("divide by zero", func(t *testing.T) {
+		t.Parallel()
 		// This test will also fail (error handling bug)
 		time.Sleep(300 * time.Millisecond)
 		_, err := Divide(10, 0)
@@ -68,6 +75,7 @@ func TestDivide(t *testing.T) {
 }
 
 func TestSkipped(t *testing.T) {
+	t.Parallel()
 	time.Sleep(100 * time.Millisecond)
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping this test on macOS")

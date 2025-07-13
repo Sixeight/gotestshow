@@ -6,6 +6,7 @@ import (
 )
 
 func TestConfigParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		threshold        string
@@ -52,6 +53,7 @@ func TestConfigParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			duration, err := time.ParseDuration(tt.threshold)
 
 			if tt.shouldError && err == nil {
@@ -70,6 +72,7 @@ func TestConfigParsing(t *testing.T) {
 }
 
 func TestFormatDuration(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		seconds  float64
@@ -109,6 +112,7 @@ func TestFormatDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := formatDuration(tt.seconds)
 			if result != tt.expected {
 				t.Errorf("formatDuration(%f) = %s, want %s", tt.seconds, result, tt.expected)

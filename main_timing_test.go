@@ -6,6 +6,7 @@ import (
 )
 
 func TestTimingModeConfig(t *testing.T) {
+	t.Parallel()
 	config := &Config{
 		TimingMode: true,
 		Threshold:  500 * time.Millisecond,
@@ -22,6 +23,7 @@ func TestTimingModeConfig(t *testing.T) {
 }
 
 func TestTimingModeDisabled(t *testing.T) {
+	t.Parallel()
 	config := &Config{
 		TimingMode: false,
 		Threshold:  500 * time.Millisecond,

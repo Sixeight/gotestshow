@@ -6,6 +6,7 @@ import (
 )
 
 func TestEventProcessor_ProcessEvent(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// Test "run" action
@@ -52,6 +53,7 @@ func TestEventProcessor_ProcessEvent(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessEvent_Pass(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// First start the test
@@ -93,6 +95,7 @@ func TestEventProcessor_ProcessEvent_Pass(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessEvent_Fail(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// First start the test
@@ -138,6 +141,7 @@ func TestEventProcessor_ProcessEvent_Fail(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessEvent_Skip(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// First start the test
@@ -179,6 +183,7 @@ func TestEventProcessor_ProcessEvent_Skip(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessEvent_Output(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// First start the test
@@ -214,6 +219,7 @@ func TestEventProcessor_ProcessEvent_Output(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessEvent_Subtests(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// Start parent test
@@ -268,6 +274,7 @@ func TestEventProcessor_ProcessEvent_Subtests(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessPackageEvent(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// Package output
@@ -299,6 +306,7 @@ func TestEventProcessor_ProcessPackageEvent(t *testing.T) {
 }
 
 func TestEventProcessor_ProcessPackageEvent_Fail(t *testing.T) {
+	t.Parallel()
 	processor := NewEventProcessor()
 
 	// Package output with build error
@@ -341,6 +349,7 @@ func TestEventProcessor_ProcessPackageEvent_Fail(t *testing.T) {
 }
 
 func TestExtractFileLocation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected string
@@ -362,6 +371,7 @@ func TestExtractFileLocation(t *testing.T) {
 }
 
 func TestExtractFileLocationWithPackage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input       string
 		packageName string
@@ -388,6 +398,7 @@ func TestExtractFileLocationWithPackage(t *testing.T) {
 }
 
 func TestGetRelativePackagePath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected string
@@ -410,6 +421,7 @@ func TestGetRelativePackagePath(t *testing.T) {
 }
 
 func TestShouldDisplayPackageFailure(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		pkg      *PackageState
@@ -462,6 +474,7 @@ func TestShouldDisplayPackageFailure(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			result := shouldDisplayPackageFailure(test.pkg)
 			if result != test.expected {
 				t.Errorf("shouldDisplayPackageFailure() = %v, expected %v", result, test.expected)

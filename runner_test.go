@@ -127,6 +127,7 @@ func (m *MockDisplay) SetConfig(config *Config) {
 }
 
 func TestRunner_Run_Success(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestExample"}
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"example","Test":"TestExample","Elapsed":1.0}`)
 
@@ -151,6 +152,7 @@ func TestRunner_Run_Success(t *testing.T) {
 }
 
 func TestRunner_Run_Failure(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestExample"}
 {"Time":"2023-01-01T00:00:01Z","Action":"fail","Package":"example","Test":"TestExample","Elapsed":1.0}`)
 
@@ -171,6 +173,7 @@ func TestRunner_Run_Failure(t *testing.T) {
 }
 
 func TestRunner_Run_PackageFailure(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"output","Package":"example","Output":"build failed\n"}
 {"Time":"2023-01-01T00:00:01Z","Action":"fail","Package":"example","Elapsed":1.0}`)
 
@@ -199,6 +202,7 @@ func TestRunner_Run_PackageFailure(t *testing.T) {
 }
 
 func TestRunner_Run_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestExample"}
 invalid json line
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"example","Test":"TestExample","Elapsed":1.0}`)
@@ -222,6 +226,7 @@ invalid json line
 }
 
 func TestRunner_Run_NonJSONInput(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader("This is not JSON")
 
 	var output bytes.Buffer
@@ -253,6 +258,7 @@ func TestRunner_Run_NonJSONInput(t *testing.T) {
 }
 
 func TestRunner_Run_SkipEvent(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestExample"}
 {"Time":"2023-01-01T00:00:01Z","Action":"skip","Package":"example","Test":"TestExample","Elapsed":0.1}`)
 
@@ -274,6 +280,7 @@ func TestRunner_Run_SkipEvent(t *testing.T) {
 }
 
 func TestRunner_Run_EmptyInput(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader("")
 
 	var output bytes.Buffer
@@ -295,6 +302,7 @@ func TestRunner_Run_EmptyInput(t *testing.T) {
 }
 
 func TestRunner_Run_MultipleTests(t *testing.T) {
+	t.Parallel()
 	input := strings.NewReader(`{"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestA"}
 {"Time":"2023-01-01T00:00:00Z","Action":"run","Package":"example","Test":"TestB"}
 {"Time":"2023-01-01T00:00:01Z","Action":"pass","Package":"example","Test":"TestA","Elapsed":1.0}

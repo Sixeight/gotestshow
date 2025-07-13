@@ -9,6 +9,7 @@ import (
 
 // TestE2E_HelpFlag tests the help flag functionality
 func TestE2E_HelpFlag(t *testing.T) {
+	t.Parallel()
 	cmd := exec.Command("go", "run", ".", "-help")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -27,6 +28,7 @@ func TestE2E_HelpFlag(t *testing.T) {
 
 // TestE2E_RealTestOutput tests with real go test output from example directory
 func TestE2E_RealTestOutput(t *testing.T) {
+	t.Parallel()
 	// First, build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -70,6 +72,7 @@ func TestE2E_RealTestOutput(t *testing.T) {
 
 // TestE2E_SuccessfulTests tests with only successful tests from specific package
 func TestE2E_SuccessfulTests(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -100,6 +103,7 @@ func TestE2E_SuccessfulTests(t *testing.T) {
 
 // TestE2E_BuildFailure tests with package that has build errors
 func TestE2E_BuildFailure(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -135,6 +139,7 @@ func TestE2E_BuildFailure(t *testing.T) {
 
 // TestE2E_NoStdin tests behavior when no stdin is provided
 func TestE2E_NoStdin(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -160,6 +165,7 @@ func TestE2E_NoStdin(t *testing.T) {
 
 // TestE2E_Performance tests that gotestshow can handle a reasonable load
 func TestE2E_Performance(t *testing.T) {
+	t.Parallel()
 	// Skip this test in short mode
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
@@ -189,6 +195,7 @@ func TestE2E_Performance(t *testing.T) {
 
 // TestE2E_LongRunningTest tests with slow tests
 func TestE2E_LongRunningTest(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -214,6 +221,7 @@ func TestE2E_LongRunningTest(t *testing.T) {
 
 // TestE2E_InvalidJSON tests behavior with malformed JSON input
 func TestE2E_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {
@@ -246,6 +254,7 @@ not json at all
 
 // TestE2E_ColorOutput tests that color output can be controlled
 func TestE2E_ColorOutput(t *testing.T) {
+	t.Parallel()
 	// Build the gotestshow binary
 	buildCmd := exec.Command("go", "build", "-o", "gotestshow", ".")
 	if err := buildCmd.Run(); err != nil {

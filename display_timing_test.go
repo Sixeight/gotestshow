@@ -8,6 +8,7 @@ import (
 )
 
 func TestShowTestResultWithTiming(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		result         *TestResult
@@ -162,6 +163,7 @@ func TestShowTestResultWithTiming(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			display := NewTerminalDisplay(&buf, false).(*TerminalDisplay)
 			display.SetConfig(tt.config)
@@ -186,6 +188,7 @@ func TestShowTestResultWithTiming(t *testing.T) {
 }
 
 func TestShowSlowTestsSummary(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	display := NewTerminalDisplay(&buf, false).(*TerminalDisplay)
 	display.SetConfig(&Config{
