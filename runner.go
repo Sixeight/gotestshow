@@ -10,17 +10,20 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 // Runner is the main application runner
 type Runner struct {
-	processor EventProcessor
-	display   Display
-	input     io.Reader
-	output    io.Writer
-	config    *Config
+	processor   EventProcessor
+	display     Display
+	input       io.Reader
+	output      io.Writer
+	config      *Config
+	interrupted bool
+	interruptMu sync.RWMutex
 }
 
 // NewRunner creates a new Runner instance
@@ -52,8 +55,29 @@ func (r *Runner) Run() int {
 		cancel()
 		time.Sleep(50 * time.Millisecond)
 		r.display.ClearLine()
+
+		// Check if interrupted before handling error
+		r.interruptMu.RLock()
+		wasInterrupted := r.interrupted
+		r.interruptMu.RUnlock()
+
+		if wasInterrupted {
+			// Show partial results on interrupt
+			fmt.Fprintln(r.output, "\n\nInterrupted by user (Ctrl-C)")
+			return r.showResults(startTime)
+		}
+
 		r.handleInputError(err)
 		return 1
+	}
+
+	// Check if interrupted after processing
+	r.interruptMu.RLock()
+	wasInterrupted := r.interrupted
+	r.interruptMu.RUnlock()
+
+	if wasInterrupted {
+		fmt.Fprintln(r.output, "\n\nInterrupted by user (Ctrl-C)")
 	}
 
 	return r.showResults(startTime)
@@ -74,9 +98,10 @@ func (r *Runner) setupEnvironment() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-sigChan
-		fmt.Fprint(r.output, "\033[?25h")
+		r.interruptMu.Lock()
+		r.interrupted = true
+		r.interruptMu.Unlock()
 		cancel()
-		os.Exit(1)
 	}()
 
 	return ctx
@@ -102,6 +127,14 @@ func (r *Runner) processInput() error {
 	validJSONFound := false
 
 	for scanner.Scan() {
+		// Check if interrupted
+		r.interruptMu.RLock()
+		if r.interrupted {
+			r.interruptMu.RUnlock()
+			return nil // Return nil to trigger summary display
+		}
+		r.interruptMu.RUnlock()
+
 		totalLines++
 		line := scanner.Bytes()
 
